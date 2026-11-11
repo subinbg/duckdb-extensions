@@ -1,0 +1,44 @@
+[project]
+name = "duckdb-extensions"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb==2.0.0",
+]
+
+[dependency-groups]
+# Installed in the test container: uv sync --locked --no-dev --group test
+test = [
+    "pytest>=8.4.2",
+]
+# Local development (uv sync): the test group plus linting and type checking.
+dev = [
+    { include-group = "test" },
+    "pyrefly>=1.4.1",
+    "ruff>=0.17.4",
+]
+
+[tool.uv]
+package = false
+
+[tool.pyrefly]
+preset = "strict"
+project-includes = ["scripts", "tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "PT",   # flake8-pytest-style
+    "PTH",  # flake8-use-pathlib
+    "RUF",  # ruff-specific
+]

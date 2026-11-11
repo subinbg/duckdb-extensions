@@ -1,0 +1,13 @@
+[package]
+# The package name is the extension name: lowercase letters, digits and underscores.
+name = "hello"
+# Written into the extension metadata (shown as extension_version in duckdb_extensions()).
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+duckdb-neo.workspace = true

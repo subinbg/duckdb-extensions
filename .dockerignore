@@ -1,0 +1,8 @@
+.git
+target
+dist
+keys
+**/__pycache__
+**/.pytest_cache
+.venv
+**/.ruff_cache

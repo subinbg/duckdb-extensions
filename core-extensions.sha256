@@ -1,0 +1,9 @@
+# SHA-256 of the uncompressed official extension binaries. Regenerate with `make lock`.
+3f37797ca9a4ef3b5a07e65278c653fe0a32f7edea1498c801022fed49afedc7  v2.0.0/linux_amd64/avro.duckdb_extension
+77e6c429aa04f25da7962572f12b19113e0ce46080fa1365ad66017aadcdb68d  v2.0.0/linux_amd64/httpfs.duckdb_extension
+b93676e544e5c6843915fb3392e3b3c35859c065fa6ace7a26cb46ca4394e56d  v2.0.0/linux_amd64/iceberg.duckdb_extension
+8d66f0661fe4da3b60fb1ef69caaefb102248dfa5a234a8671fed5b4edca441b  v2.0.0/linux_amd64/sqlite_scanner.duckdb_extension
+3e8a61c8ae51851a8c70c49a5972fd3c3302c3ffa798f3286f7dca0746975607  v2.0.0/linux_arm64/avro.duckdb_extension
+53f7aea1a0448ea62ef9b63f95da37c5766070084f14f14110e275e76382e7b2  v2.0.0/linux_arm64/httpfs.duckdb_extension
+5616c30201099564326826d223aeea19b59f15744a981b074a906fb2b9dd4f44  v2.0.0/linux_arm64/iceberg.duckdb_extension
+c2dc454512553bc09b075172893189435281e6d7ea6297dd211fbc93db985050  v2.0.0/linux_arm64/sqlite_scanner.duckdb_extension
