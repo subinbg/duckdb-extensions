@@ -3,8 +3,6 @@ members = ["extensions/*"]
 resolver = "3"
 
 [workspace.dependencies]
-# Rust bindings for DuckDB's C API v2. The version encodes the DuckDB release it is
-# built against (0.20000.x = v2.0.0) and must match DUCKDB_VERSION in versions.env.
 duckdb-neo = { version = "=0.20000.1", features = ["build-extension"] }
 
 [profile.release]

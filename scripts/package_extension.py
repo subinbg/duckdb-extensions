@@ -11,16 +11,18 @@
 The output lands in DuckDB's repository layout:
 <out>/<duckdb_version>/<platform>/<name>.duckdb_extension
 
-Requires Python 3.11+ (tomllib) and the openssl CLI for signing.
+Standard library only (argpr.py, next to this script, builds the command line), plus the
+openssl CLI for signing.
 """
 
-import argparse
 import hashlib
 import re
 import subprocess
 import sys
 import tomllib
 from pathlib import Path
+
+from argpr import command, init
 
 SIGNATURE_SIZE = 256
 HASH_CHUNK_SIZE = 1 << 20
@@ -63,41 +65,37 @@ def rsa_sign(digest: bytes, key_path: Path) -> bytes:
     return signature
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--manifest", required=True, type=Path, help="the extension's Cargo.toml")
-    parser.add_argument("--library-dir", required=True, type=Path, help="directory holding lib<name>.so")
-    parser.add_argument("--platform", required=True, help="DuckDB platform, e.g. linux_amd64")
-    parser.add_argument("--duckdb-version", required=True, help="exact DuckDB version, e.g. v2.0.0")
-    parser.add_argument(
-        "--abi-type",
-        default="C_STRUCT_UNSTABLE",
-        help="C_STRUCT_UNSTABLE (C API v2, pinned to --duckdb-version; what duckdb-neo builds) or C_STRUCT",
-    )
-    parser.add_argument("--signing-key", type=Path, help="RSA-2048 private key (PEM); omit for unsigned")
-    parser.add_argument("--out", required=True, type=Path, help="repository directory")
-    args = parser.parse_args()
-
-    package = tomllib.loads(args.manifest.read_text())["package"]
+@command
+def package_extension(
+    *,
+    manifest: Path,  # the extension's Cargo.toml
+    library_dir: Path,  # directory holding lib<name>.so
+    platform: str,  # e.g. linux_amd64
+    duckdb_version: str,  # exact DuckDB version, e.g. v2.0.0
+    abi_type: str = "C_STRUCT_UNSTABLE",  # C_STRUCT_UNSTABLE (C API v2, what duckdb-neo builds) or C_STRUCT
+    signing_key: Path | None = None,  # RSA-2048 private key (PEM); omit for unsigned
+    out: Path,  # repository directory
+) -> None:
+    package = tomllib.loads(manifest.read_text())["package"]
     name, version = package["name"], package["version"]
     if not NAME_PATTERN.match(name):
         raise SystemExit(f"package name {name!r} is not a valid extension name ([a-z0-9_]+)")
 
-    library = args.library_dir / f"lib{name}.so"
-    signed_part = library.read_bytes() + footer(args.platform, args.duckdb_version, version, args.abi_type)
+    library = library_dir / f"lib{name}.so"
+    signed_part = library.read_bytes() + footer(platform, duckdb_version, version, abi_type)
     signed_part = signed_part[:-SIGNATURE_SIZE]
-    if args.signing_key:
-        signature = rsa_sign(extension_hash(signed_part), args.signing_key)
+    if signing_key:
+        signature = rsa_sign(extension_hash(signed_part), signing_key)
     else:
         print(f"WARNING: {name} is unsigned; it loads only with allow_unsigned_extensions", file=sys.stderr)
         signature = b"\x00" * SIGNATURE_SIZE
 
-    target = args.out / args.duckdb_version / args.platform / f"{name}.duckdb_extension"
+    target = out / duckdb_version / platform / f"{name}.duckdb_extension"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(signed_part + signature)
-    state = "signed" if args.signing_key else "unsigned"
-    print(f"{state} {target} ({name} {version}, {args.abi_type}, {args.platform}, {args.duckdb_version})")
+    state = "signed" if signing_key else "unsigned"
+    print(f"{state} {target} ({name} {version}, {abi_type}, {platform}, {duckdb_version})")
 
 
 if __name__ == "__main__":
-    main()
+    init()

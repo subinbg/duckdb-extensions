@@ -9,6 +9,9 @@
 #
 # Versions come from versions.env (Python packages from uv.lock). The signing key is a BuildKit secret:
 #   --secret id=signing_key,src=keys/signing-key.pem
+#
+# The scripts run without python -I: isolated mode also drops the script's own directory from
+# sys.path, and they import scripts/argpr.py from there.
 
 ARG RUST_VERSION=1.95.0
 ARG UV_VERSION=0.11.26
@@ -37,9 +40,9 @@ FROM ${PYTHON_IMAGE} AS fetch-core
 ARG TARGETARCH
 WORKDIR /work
 COPY versions.env core-extensions.sha256 ./
-COPY scripts/fetch_core.py ./scripts/
+COPY scripts/argpr.py scripts/fetch_core.py ./scripts/
 RUN . ./versions.env \
- && python -I scripts/fetch_core.py --version "$DUCKDB_VERSION" --platform "linux_${TARGETARCH}" \
+ && python scripts/fetch_core.py --version "$DUCKDB_VERSION" --platform "linux_${TARGETARCH}" \
       --lock core-extensions.sha256 --out /dist/core $CORE_EXTENSIONS
 
 FROM ${PYTHON_IMAGE} AS package
@@ -58,7 +61,7 @@ set -eu
 . ./versions.env
 platform="linux_${TARGETARCH}"
 for manifest in extensions/*/Cargo.toml; do
-  python -I scripts/package_extension.py --manifest "$manifest" --library-dir /build \
+  python scripts/package_extension.py --manifest "$manifest" --library-dir /build \
     --platform "$platform" --duckdb-version "$DUCKDB_VERSION" \
     --signing-key /run/secrets/signing_key --out /dist/custom
 done
@@ -87,6 +90,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --group test
 RUN useradd --create-home tester
 COPY --from=package /artifacts /artifacts
+COPY scripts/argpr.py ./scripts/
 COPY tests ./tests
 USER tester
 ENV PATH=/opt/venv/bin:$PATH \

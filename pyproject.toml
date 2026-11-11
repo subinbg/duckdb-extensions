@@ -7,11 +7,9 @@ dependencies = [
 ]
 
 [dependency-groups]
-# Installed in the test container: uv sync --locked --no-dev --group test
 test = [
     "pytest>=8.4.2",
 ]
-# Local development (uv sync): the test group plus linting and type checking.
 dev = [
     { include-group = "test" },
     "pyrefly>=1.4.1",
@@ -24,9 +22,14 @@ package = false
 [tool.pyrefly]
 preset = "strict"
 project-includes = ["scripts", "tests"]
+search-path = [".", "scripts"]
+
+[tool.pytest.ini_options]
+pythonpath = ["scripts"]
 
 [tool.ruff]
 line-length = 120
+src = [".", "scripts"]
 
 [tool.ruff.lint]
 select = [

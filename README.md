@@ -37,10 +37,11 @@ uv run pyrefly check      # type check
 | `pyproject.toml`, `uv.lock` | Python dependencies (also what the test container installs) and ruff/pyrefly configuration |
 | `core-extensions.sha256` | Pinned hashes of the official binaries for `linux_amd64` and `linux_arm64` |
 | `extensions/<name>/` | One Rust crate per custom extension; the package name is the extension name |
+| `scripts/argpr.py` | Builds the scripts' command lines from their typed function signatures (standard library only, on top of `argparse`) |
 | `scripts/fetch_core.py` | Downloads core extensions and checks them against the lock file |
 | `scripts/package_extension.py` | Appends DuckDB's extension metadata to a compiled library and signs it |
 | `Dockerfile` | Stages `build-custom`, `fetch-core`, `package`, `dist`, `test` |
-| `tests/` | pytest suite run inside the `test` image (`support.py` holds shared types and helpers) |
+| `tests/` | pytest suite run inside the `test` image (`support.py` holds shared types and helpers; `test_argpr.py` covers `scripts/argpr.py`) |
 
 ## Bundle layout
 
@@ -102,7 +103,7 @@ Take the public key from a copy you trust (for example this repository once a re
 ## Upgrading DuckDB
 
 1. Set `DUCKDB_VERSION` in `versions.env`, and run `uv add duckdb==<version>` so `pyproject.toml` and `uv.lock` match (`make check` fails while they differ).
-2. Bump `duckdb-neo` in `Cargo.toml` to the release built for that DuckDB version, then run `make cargo-lock`.
+2. Bump `duckdb-neo` in `Cargo.toml` to the release built for that DuckDB version (`make check` fails while they differ), then run `make cargo-lock`.
 3. Run `make lock` to pin the new core extension hashes, then `make test`.
 
 Custom extensions use the C API v2 through `duckdb-neo`, which DuckDB marks `C_STRUCT_UNSTABLE`: like the official C++ extensions, they load only in the exact DuckDB version they were built for.

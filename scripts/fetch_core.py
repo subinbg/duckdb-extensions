@@ -8,16 +8,17 @@ used directly as `custom_extension_repository`.
 DuckDB verifies each file's signature on INSTALL/LOAD anyway. The lock adds a second
 check: CI fails if upstream ever serves different bytes for the same version.
 
-Standard library only.
+Standard library only (argpr.py, next to this script, builds the command line).
 """
 
-import argparse
 import gzip
 import hashlib
 import re
 import sys
 import urllib.request
 from pathlib import Path
+
+from argpr import ArgumentError, command, init
 
 BASE_URL = "https://extensions.duckdb.org"
 NAME_PATTERN = re.compile(r"^[a-z0-9_]+$")
@@ -48,43 +49,44 @@ def download(version: str, platform: str, name: str) -> bytes:
         return gzip.decompress(response.read())
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--version", required=True, help="DuckDB version, e.g. v2.0.0")
-    parser.add_argument("--platform", required=True, action="append", help="DuckDB platform (repeatable)")
-    parser.add_argument("--lock", required=True, type=Path)
-    parser.add_argument("--out", type=Path, help="repository directory to write binaries into")
-    parser.add_argument("--update-lock", action="store_true", help="rewrite the lock instead of verifying against it")
-    parser.add_argument("extensions", nargs="+")
-    args = parser.parse_args()
-
-    for name in args.extensions:
+@command
+def fetch_core(
+    extensions: list[str],
+    /,
+    *,
+    version: str,  # e.g. v2.0.0
+    platform: list[str],  # e.g. linux_amd64; repeat the flag for several
+    lock: Path,
+    out: Path | None = None,  # repository directory to write binaries into
+    update_lock: bool = False,  # rewrite the lock instead of verifying against it
+) -> int:
+    for name in extensions:
         if not NAME_PATTERN.match(name):
-            parser.error(f"invalid extension name {name!r}")
+            raise ArgumentError(f"invalid extension name {name!r}")
 
-    lock: dict[str, str] = {} if args.update_lock else read_lock(args.lock)
+    pinned: dict[str, str] = {} if update_lock else read_lock(lock)
     failures = 0
-    for platform in args.platform:
-        for name in args.extensions:
-            rel = f"{args.version}/{platform}/{name}.duckdb_extension"
-            data = download(args.version, platform, name)
+    for plat in platform:
+        for name in extensions:
+            rel = f"{version}/{plat}/{name}.duckdb_extension"
+            data = download(version, plat, name)
             digest = hashlib.sha256(data).hexdigest()
-            if args.update_lock:
-                lock[rel] = digest
-            elif lock.get(rel) != digest:
-                print(f"FAIL {rel}: lock has {lock.get(rel)}, downloaded {digest}", file=sys.stderr)
+            if update_lock:
+                pinned[rel] = digest
+            elif pinned.get(rel) != digest:
+                print(f"FAIL {rel}: lock has {pinned.get(rel)}, downloaded {digest}", file=sys.stderr)
                 failures += 1
                 continue
-            if args.out:
-                target = args.out / rel
+            if out:
+                target = out / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
             print(f"ok   {rel}  {digest}")
 
-    if args.update_lock:
-        write_lock(args.lock, lock)
+    if update_lock:
+        write_lock(lock, pinned)
     return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(init())

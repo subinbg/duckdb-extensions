@@ -14,7 +14,8 @@ cluster.run(["--run-dir", "x", "--preds", "a", "--preds", "b"])
 print(cluster.flags)  # {"--run-dir", ...}
 
 if __name__ == "__main__":
-    init(__name__)   # python -m pkg.module cluster --run-dir x --preds a
+    init()  # python script.py --run-dir x --preds a  (or python -m pkg.module ...)
+            # with several commands in the module: python script.py cluster --run-dir x
 ```
 
 Related: https://github.com/swansonk14/typed-argument-parser
@@ -116,7 +117,7 @@ class Type(Enum):
             case _:
                 return self.value
 
-    def parse_item(self, text: str) -> SupportedScalarType:
+    def parse_item(self, text: str) -> Any:
         return _PARSERS[self.scalar_type](text)
 
     def accepts(self, value: Any) -> bool:
@@ -127,7 +128,7 @@ class Type(Enum):
 
         return self._accepts_item(value)
 
-    def _accepts_item(self, value: SupportedScalarType) -> bool:
+    def _accepts_item(self, value: Any) -> bool:
         if isinstance(value, bool):
             return self.scalar_type is bool
         if self.scalar_type is float:
@@ -193,7 +194,7 @@ class Parameter:
 
     def add_to(self, parser: argparse.ArgumentParser) -> None:
         """Declare the parameter on an `argparse` parser."""
-        options: dict[str, Any] = {"type": self.convert}
+        options: dict[str, Any] = {}
         if not self.required:
             options["default"] = self.default
 
@@ -202,18 +203,16 @@ class Parameter:
                 options["nargs"] = "+" if self.required else "*"
             elif not self.required:
                 options["nargs"] = "?"
-            parser.add_argument(self.name, **options)
+            parser.add_argument(self.name, type=self.convert, **options)
             return
 
-        options.update(
-            dest=self.name,
-            required=self.required,
-            metavar=self.type.scalar_type.__name__,
-        )
-        if self.type.is_list:
-            options["action"] = _Append
-        elif self.type is Type.Bool:
-            options.update(nargs="?", const=True)  # a bare flag is true
+        options.update(dest=self.name, required=self.required)
+        if self.type is Type.Bool:
+            options["action"] = argparse.BooleanOptionalAction  # --flag / --no-flag, taking no value
+        else:
+            options.update(type=self.convert, metavar=self.type.scalar_type.__name__)
+            if self.type.is_list:
+                options["action"] = _Append
         parser.add_argument(self.flag, **options)
 
 
@@ -248,8 +247,7 @@ class PrettyPrint:
 
 
 def _unwrap_optional(annotation: Any) -> tuple[Any, bool]:
-    """Split `T | None` (or `Optional[T]`) into `(T, True)`; else `(annotation, False)`.
-    """
+    """Split `T | None` (or `Optional[T]`) into `(T, True)`; else `(annotation, False)`."""
 
     if get_origin(annotation) in (Union, types.UnionType):
         members = get_args(annotation)
@@ -400,29 +398,43 @@ def _module_commands(module: types.ModuleType) -> Iterator[Command]:
             yield value
 
 
-def init(name: str) -> Any:
-    """Run the command for the module `name`.
+def init(argv: Sequence[str] | None = None) -> Any:
+    """Run a command of the calling module with `argv` (default: `sys.argv[1:]`).
 
-    Call it as `init(__name__)` under `if __name__ == "__main__":`, and
-    the module runs as `python -m pkg.module <command> --flag value ...`.
+    Call it as `sys.exit(init())` under `if __name__ == "__main__":`, for `python script.py`,
+    `python -m pkg.module`, `python -m pkg` (`pkg/__main__.py`) or `python dir/`; or from a function
+    used as an entry point. With one command in the module, its arguments follow directly; with
+    several, the first argument names the command. The module docstring is the `--help` text.
     """
 
-    module = sys.modules[name]
-    spec = module.__spec__
-    prog = None if spec is None else "python -m " + spec.name.removesuffix(".__main__")
-    parser = argparse.ArgumentParser(prog=prog)
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    _COMMAND = "argpr:command"
 
+    module = sys.modules[sys._getframe(1).f_globals["__name__"]]  # the caller's module
     commands: dict[str, Command] = {}
     for command_ in _module_commands(module):
         if command_.name in commands:
-            raise ValueError(f"{name}: duplicate command name {command_.name!r}")
+            raise ValueError(f"{module.__name__}: duplicate command name {command_.name!r}")
         commands[command_.name] = command_
-        command_.configure(subparsers.add_parser(command_.name))
+    if not commands:
+        raise ValueError(f"{module.__name__}: no commands")
 
-    values = vars(parser.parse_args())
-    selected = commands[values.pop("command")]
+    # Run with -m: show `python -m pkg.module`, not the file name (`python dir/` has spec name "__main__").
+    spec = module.__spec__ if module.__name__ == "__main__" else None
+    prog = None if spec is None or spec.name == "__main__" else "python -m " + spec.name.removesuffix(".__main__")
+    parser = argparse.ArgumentParser(
+        prog=prog, description=module.__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    if len(commands) == 1:
+        parsers = dict.fromkeys(commands, parser)
+    else:
+        subparsers = parser.add_subparsers(dest=_COMMAND, metavar="command", required=True)
+        parsers = {name: subparsers.add_parser(name) for name in commands}
+    for name, command_parser in parsers.items():
+        commands[name].configure(command_parser)
+
+    values = vars(parser.parse_args(argv))
+    name = values.pop(_COMMAND, next(iter(commands)))
     try:
-        return selected.invoke(values)
+        return commands[name].invoke(values)
     except ArgumentError as error:
-        subparsers.choices[selected.name].error(str(error))
+        parsers[name].error(str(error))
