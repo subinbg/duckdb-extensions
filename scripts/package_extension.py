@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""Turn a compiled Rust cdylib into a (signed) DuckDB extension file.
-
-1. Appends DuckDB's extension footer, byte for byte the layout written by
-   duckdb/extension-ci-tools scripts/append_extension_metadata.py: a Wasm custom
-   section header, 8 x 32-byte metadata fields, and a 256-byte signature slot.
-2. Fills the signature slot the way DuckDB verifies it (duckdb/scripts/
-   compute-extension-hash.sh): SHA-256 each 1 MiB chunk of the file minus its last
-   256 bytes, SHA-256 the concatenated digests, and RSA-sign that with SHA-256.
-
-The output lands in DuckDB's repository layout:
-<out>/<duckdb_version>/<platform>/<name>.duckdb_extension
-
-Standard library only (argpr.py, next to this script, builds the command line), plus the
-openssl CLI for signing.
-"""
 
 import hashlib
 import re
@@ -34,8 +19,10 @@ WASM_SECTION_HEADER = b"\x00\x93\x04\x10duckdb_signature\x80\x04"
 
 def metadata_field(value: str) -> bytes:
     raw = value.encode("ascii")
+
     if len(raw) > 32:
         raise ValueError(f"metadata field longer than 32 bytes: {value!r}")
+
     return raw.ljust(32, b"\x00")
 
 
@@ -60,8 +47,10 @@ def rsa_sign(digest: bytes, key_path: Path) -> bytes:
         stdout=subprocess.PIPE,
         check=True,
     ).stdout
+
     if len(signature) != SIGNATURE_SIZE:
         raise SystemExit(f"signature is {len(signature)} bytes; DuckDB needs an RSA-2048 key (256-byte signatures)")
+
     return signature
 
 
@@ -76,14 +65,28 @@ def package_extension(
     signing_key: Path | None = None,  # RSA-2048 private key (PEM); omit for unsigned
     out: Path,  # repository directory
 ) -> None:
+    """Turn a compiled Rust cdylib into a (signed) DuckDB extension file.
+
+    1. Append the extension footer: a Wasm custom section header, 8 x 32-byte metadata fields, and a signature slot.
+       This is byte for byte the layout written by duckdb/extension-ci-tools scripts/append_extension_metadata.py.
+    2. Fill the signature slot the way DuckDB verifies it (duckdb/scripts/compute-extension-hash.sh):
+       SHA-256 each 1 MiB chunk of the file minus its last 256 bytes, SHA-256 the concatenated digests,
+       and RSA-sign that with SHA-256.
+
+    The output lands in DuckDB's repository layout: <out>/<duckdb_version>/<platform>/<name>.duckdb_extension
+    Signing needs the openssl CLI.
+    """
+
     package = tomllib.loads(manifest.read_text())["package"]
     name, version = package["name"], package["version"]
+
     if not NAME_PATTERN.match(name):
         raise SystemExit(f"package name {name!r} is not a valid extension name ([a-z0-9_]+)")
 
     library = library_dir / f"lib{name}.so"
     signed_part = library.read_bytes() + footer(platform, duckdb_version, version, abi_type)
     signed_part = signed_part[:-SIGNATURE_SIZE]
+
     if signing_key:
         signature = rsa_sign(extension_hash(signed_part), signing_key)
     else:
@@ -93,6 +96,7 @@ def package_extension(
     target = out / duckdb_version / platform / f"{name}.duckdb_extension"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(signed_part + signature)
+
     state = "signed" if signing_key else "unsigned"
     print(f"{state} {target} ({name} {version}, {abi_type}, {platform}, {duckdb_version})")
 

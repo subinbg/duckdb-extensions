@@ -41,7 +41,7 @@ uv run pyrefly check      # type check
 | `scripts/fetch_core.py` | Downloads core extensions and checks them against the lock file |
 | `scripts/package_extension.py` | Appends DuckDB's extension metadata to a compiled library and signs it |
 | `Dockerfile` | Stages `build-custom`, `fetch-core`, `package`, `dist`, `test` |
-| `tests/` | pytest suite run inside the `test` image (`support.py` holds shared types and helpers; `test_argpr.py` covers `scripts/argpr.py`) |
+| `tests/` | pytest suite run inside the `test` image (`support.py` holds shared types and helpers) |
 
 ## Bundle layout
 

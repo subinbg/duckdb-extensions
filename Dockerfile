@@ -90,7 +90,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --group test
 RUN useradd --create-home tester
 COPY --from=package /artifacts /artifacts
-COPY scripts/argpr.py ./scripts/
 COPY tests ./tests
 USER tester
 ENV PATH=/opt/venv/bin:$PATH \

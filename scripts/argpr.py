@@ -335,7 +335,10 @@ class Command:
         return self.usage()
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
-        """Declare every parameter on an `argparse` parser."""
+        """Declare the command on an `argparse` parser: its docstring as the description, and every parameter."""
+        if self.function.__doc__:
+            parser.description = inspect.cleandoc(self.function.__doc__)
+
         for parameter in self.parameters.values():
             parameter.add_to(parser)
 
@@ -351,7 +354,7 @@ class Command:
         return self(*positional, **values)
 
     def run(self, argv: Sequence[str]) -> Any:
-        """Parse ``argv`` and call the function with the result."""
+        """Parse `argv` and call the function with the result."""
         return self.invoke(self.parse(argv))
 
     def usage(self) -> str:
@@ -392,48 +395,50 @@ def command(
 
 
 def _module_commands(module: types.ModuleType) -> Iterator[Command]:
-    """The commands defined (not merely imported) in ``module``, in definition order."""
     for value in vars(module).values():
         if isinstance(value, Command) and value.__module__ == module.__name__:
             yield value
 
 
-def init(argv: Sequence[str] | None = None) -> Any:
-    """Run a command of the calling module with `argv` (default: `sys.argv[1:]`).
-
-    Call it as `sys.exit(init())` under `if __name__ == "__main__":`, for `python script.py`,
-    `python -m pkg.module`, `python -m pkg` (`pkg/__main__.py`) or `python dir/`; or from a function
-    used as an entry point. With one command in the module, its arguments follow directly; with
-    several, the first argument names the command. The module docstring is the `--help` text.
-    """
-
+def init(name: str | None = None, argv: Sequence[str] | None = None) -> Any:
     _COMMAND = "argpr:command"
 
-    module = sys.modules[sys._getframe(1).f_globals["__name__"]]  # the caller's module
+    module_name = name  # the caller's module
+    if module_name is None:
+        module_name = sys._getframe(1).f_globals["__name__"]
+
+    module = sys.modules[module_name]
     commands: dict[str, Command] = {}
+
     for command_ in _module_commands(module):
         if command_.name in commands:
             raise ValueError(f"{module.__name__}: duplicate command name {command_.name!r}")
         commands[command_.name] = command_
+
     if not commands:
         raise ValueError(f"{module.__name__}: no commands")
 
-    # Run with -m: show `python -m pkg.module`, not the file name (`python dir/` has spec name "__main__").
+    # Run with -m: show `python -m pkg.module`
     spec = module.__spec__ if module.__name__ == "__main__" else None
     prog = None if spec is None or spec.name == "__main__" else "python -m " + spec.name.removesuffix(".__main__")
     parser = argparse.ArgumentParser(
         prog=prog, description=module.__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+
     if len(commands) == 1:
         parsers = dict.fromkeys(commands, parser)
     else:
         subparsers = parser.add_subparsers(dest=_COMMAND, metavar="command", required=True)
-        parsers = {name: subparsers.add_parser(name) for name in commands}
+        parsers = {
+            name: subparsers.add_parser(name, formatter_class=argparse.RawDescriptionHelpFormatter) for name in commands
+        }
+
     for name, command_parser in parsers.items():
         commands[name].configure(command_parser)
 
     values = vars(parser.parse_args(argv))
     name = values.pop(_COMMAND, next(iter(commands)))
+
     try:
         return commands[name].invoke(values)
     except ArgumentError as error:
