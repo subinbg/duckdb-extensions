@@ -14,7 +14,7 @@ Requires Docker with BuildKit, `make`, `openssl` and [uv](https://docs.astral.sh
 ```bash
 make test   # build the bundle, then run the loading tests offline
 make dist   # write dist/duckdb-extensions-<version>-linux_<arch>.tar.gz and its .sha256
-make check  # ruff lint + format check, pyrefly (strict preset)
+make check  # version pins, ruff lint + format check, pyrefly (strict preset)
 ```
 
 The first run creates a development signing key at `keys/signing-key.pem` (ignored by git).
@@ -33,7 +33,7 @@ uv run pyrefly check      # type check
 
 | Path | Purpose |
 |---|---|
-| `versions.env` | DuckDB version, core extension list, Rust and uv versions (read by `Makefile` and `Dockerfile`) |
+| `versions.env` | Every pinned input: DuckDB version, core extension list and container images (`make` passes them to `docker build`) |
 | `pyproject.toml`, `uv.lock` | Python dependencies (also what the test container installs) and ruff/pyrefly configuration |
 | `core-extensions.sha256` | Pinned hashes of the official binaries for `linux_amd64` and `linux_arm64` |
 | `extensions/<name>/` | One Rust crate per custom extension; the package name is the extension name |
@@ -102,9 +102,11 @@ Take the public key from a copy you trust (for example this repository once a re
 
 ## Upgrading DuckDB
 
-1. Set `DUCKDB_VERSION` in `versions.env`, and run `uv add duckdb==<version>` so `pyproject.toml` and `uv.lock` match (`make check` fails while they differ).
-2. Bump `duckdb-neo` in `Cargo.toml` to the release built for that DuckDB version (`make check` fails while they differ), then run `make cargo-lock`.
+1. Set `DUCKDB_VERSION` in `versions.env`, and run `uv add duckdb==<version>` so `pyproject.toml` and `uv.lock` match.
+2. Bump `duckdb-neo` in `Cargo.toml` to the release built for that DuckDB version, then run `make cargo-lock`.
 3. Run `make lock` to pin the new core extension hashes, then `make test`.
+
+`make pins` fails while `pyproject.toml`, `Cargo.toml` or `.python-version` disagree with `versions.env`, and `make test`, `make dist` and `make check` run it first.
 
 Custom extensions use the C API v2 through `duckdb-neo`, which DuckDB marks `C_STRUCT_UNSTABLE`: like the official C++ extensions, they load only in the exact DuckDB version they were built for.
 

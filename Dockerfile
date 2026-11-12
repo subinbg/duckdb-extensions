@@ -1,28 +1,19 @@
 # syntax=docker/dockerfile:1
+# check=skip=InvalidDefaultArgInFrom
 #
 # Stages:
-#   build-custom  compile every crate under extensions/ (glibc 2.28, like DuckDB's own Linux builds)
-#   fetch-core    download official core extensions, verify against core-extensions.sha256
-#   package       add metadata + signature to custom extensions, assemble the release tarball
+#   build-custom  compile every crate under extensions/
+#   fetch-core    download official core extensions and verify them against core-extensions.sha256
+#   package       add metadata and a signature to custom extensions, then assemble the release tarball
 #   dist          the tarball alone, for `docker build --output` (make dist)
-#   test          Python dependencies from uv.lock + the tests; run it with --network none (make test)
-#
-# Versions come from versions.env (Python packages from uv.lock). The signing key is a BuildKit secret:
-#   --secret id=signing_key,src=keys/signing-key.pem
-#
-# The scripts run without python -I: isolated mode also drops the script's own directory from
-# sys.path, and they import scripts/argpr.py from there.
+#   test          Python dependencies from uv.lock and the tests; run it with --network none (make test)
 
-ARG RUST_VERSION=1.95.0
-ARG UV_VERSION=0.11.26
-ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+ARG BUILD_IMAGE RUST_IMAGE PYTHON_IMAGE UV_IMAGE
 
-FROM rust:${RUST_VERSION}-slim-bookworm AS rust-toolchain
-FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+FROM ${RUST_IMAGE} AS rust-toolchain
+FROM ${UV_IMAGE} AS uv
 
-# AlmaLinux 8 has glibc 2.28, the same floor as DuckDB's linux_amd64/linux_arm64 binaries,
-# so the extension runs on any server that can run DuckDB itself.
-FROM almalinux:8 AS build-custom
+FROM ${BUILD_IMAGE} AS build-custom
 RUN dnf install -y gcc && dnf clean all
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
@@ -37,28 +28,25 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
  && cp target/release/lib*.so /out/
 
 FROM ${PYTHON_IMAGE} AS fetch-core
-ARG TARGETARCH
+ARG TARGETARCH DUCKDB_VERSION CORE_EXTENSIONS
 WORKDIR /work
-COPY versions.env core-extensions.sha256 ./
+COPY core-extensions.sha256 ./
 COPY scripts/argpr.py scripts/fetch_core.py ./scripts/
-RUN . ./versions.env \
- && python scripts/fetch_core.py --version "$DUCKDB_VERSION" --platform "linux_${TARGETARCH}" \
+RUN python scripts/fetch_core.py --version "$DUCKDB_VERSION" --platform "linux_${TARGETARCH}" \
       --lock core-extensions.sha256 --out /dist/core $CORE_EXTENSIONS
 
 FROM ${PYTHON_IMAGE} AS package
-ARG TARGETARCH
+ARG TARGETARCH DUCKDB_VERSION
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /work
-COPY versions.env ./
 COPY scripts ./scripts
 COPY extensions ./extensions
 COPY --from=build-custom /out /build
 COPY --from=fetch-core /dist/core /dist/core
 RUN --mount=type=secret,id=signing_key,required=true <<'EOF'
 set -eu
-. ./versions.env
 platform="linux_${TARGETARCH}"
 for manifest in extensions/*/Cargo.toml; do
   python scripts/package_extension.py --manifest "$manifest" --library-dir /build \
@@ -78,14 +66,12 @@ COPY --from=package /artifacts /
 
 FROM ${PYTHON_IMAGE} AS test
 COPY --from=uv /uv /usr/local/bin/uv
-# Use the image's Python 3.12 (never download one) and keep the venv outside the work tree.
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1
 WORKDIR /work
 COPY pyproject.toml uv.lock .python-version ./
-# --locked: fail if uv.lock is out of date with pyproject.toml; hashes in uv.lock are verified.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --group test
 RUN useradd --create-home tester
@@ -94,4 +80,5 @@ COPY tests ./tests
 USER tester
 ENV PATH=/opt/venv/bin:$PATH \
     DUCKDB_ARTIFACT_DIR=/artifacts
+
 CMD ["python", "-I", "-m", "pytest", "-v", "-p", "no:cacheprovider", "tests"]

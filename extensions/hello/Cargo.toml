@@ -3,8 +3,8 @@
 name = "hello"
 # Written into the extension metadata (shown as extension_version in duckdb_extensions()).
 version = "0.1.0"
-edition = "2024"
-publish = false
+edition.workspace = true
+publish.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
