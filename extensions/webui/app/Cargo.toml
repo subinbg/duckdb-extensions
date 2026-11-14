@@ -1,0 +1,21 @@
+[package]
+# The browser application of the webui extension, compiled to WebAssembly and embedded in the extension.
+name = "webui-app"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+webui-protocol.workspace = true
+# Draws the page from signals: a part of it is redrawn when a signal it reads changes.
+leptos = { version = "0.8.23", features = ["csr"] }
+gloo-net = { version = "0.6", default-features = false, features = ["http", "json"] }
+serde.workspace = true
+# arbitrary_precision keeps the digits of HUGEINT and DECIMAL values that a float cannot hold.
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+# Must equal WASM_BINDGEN_VERSION in versions.env: the CLI that generates the JavaScript glue has to match exactly.
+wasm-bindgen = "=0.2.130"
+web-sys = { version = "0.3", features = ["Clipboard", "DomRect", "History", "HtmlSelectElement", "Navigator", "Storage"] }

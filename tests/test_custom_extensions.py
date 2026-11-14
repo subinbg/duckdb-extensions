@@ -6,13 +6,15 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from tests.support import CUSTOM_REPOSITORY, Bundle, Connect, loaded_extensions, scalar, tampered_copy
-
-
-def register_repository(
-    con: duckdb.DuckDBPyConnection, prefix: Path, public_key: str, name: str = CUSTOM_REPOSITORY
-) -> None:
-    con.execute(f"CREATE OR REPLACE EXTENSION REPOSITORY {name} WITH PREFIX '{prefix}' USING PUBLIC KEY '{public_key}'")
+from tests.support import (
+    CUSTOM_REPOSITORY,
+    Bundle,
+    Connect,
+    loaded_extensions,
+    register_repository,
+    scalar,
+    tampered_copy,
+)
 
 
 @pytest.fixture

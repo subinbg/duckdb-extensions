@@ -58,6 +58,12 @@ class Bundle:
         return body
 
 
+def register_repository(
+    con: duckdb.DuckDBPyConnection, prefix: Path, public_key: str, name: str = CUSTOM_REPOSITORY
+) -> None:
+    con.execute(f"CREATE OR REPLACE EXTENSION REPOSITORY {name} WITH PREFIX '{prefix}' USING PUBLIC KEY '{public_key}'")
+
+
 def scalar(con: duckdb.DuckDBPyConnection, query: str) -> object:
     """First column of the first row of `query`."""
     row = con.execute(query).fetchone()

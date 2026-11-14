@@ -2,7 +2,8 @@
 # check=skip=InvalidDefaultArgInFrom
 #
 # Stages:
-#   build-custom  compile every crate under extensions/
+#   build-web     compile the browser application of the webui extension to WebAssembly
+#   build-custom  compile every extension under extensions/, with that application embedded in webui
 #   fetch-core    download official core extensions and verify them against core-extensions.sha256
 #   package       add metadata and a signature to custom extensions, then assemble the release tarball
 #   dist          the tarball alone, for `docker build --output` (make dist)
@@ -13,6 +14,22 @@ ARG BUILD_IMAGE RUST_IMAGE PYTHON_IMAGE UV_IMAGE
 FROM ${RUST_IMAGE} AS rust-toolchain
 FROM ${UV_IMAGE} AS uv
 
+FROM ${RUST_IMAGE} AS build-web
+ARG WASM_BINDGEN_VERSION
+RUN rustup target add wasm32-unknown-unknown
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    cargo install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY extensions ./extensions
+# Its own target cache: build scripts compiled on this image would not run on the older one of build-custom.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=target-web,target=/src/target \
+    cargo build --profile web --locked --package webui-app --target wasm32-unknown-unknown \
+ && wasm-bindgen --target web --no-typescript --remove-name-section --out-dir /web \
+      target/wasm32-unknown-unknown/web/webui_app.wasm \
+ && cp extensions/webui/app/static/* /web/
+
 FROM ${BUILD_IMAGE} AS build-custom
 RUN dnf install -y gcc && dnf clean all
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
@@ -21,9 +38,13 @@ ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/ca
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY extensions ./extensions
+COPY --from=build-web /web /web
+# extensions/webui/build.rs embeds the files of this directory in the extension.
+ENV WEBUI_ASSETS=/web
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo build --release --locked \
+    cargo test --locked --package webui-protocol \
+ && cargo build --release --locked \
  && mkdir -p /out \
  && cp target/release/lib*.so /out/
 

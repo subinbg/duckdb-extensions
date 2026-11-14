@@ -23,7 +23,7 @@ help:
 	@echo "make test        build everything and run the loading tests offline (--network none)"
 	@echo "make dist        write the release tarball to dist/"
 	@echo "make check       version pins, ruff lint + format check, pyrefly strict type check"
-	@echo "make pins        check that pyproject.toml, Cargo.toml and .python-version match versions.env"
+	@echo "make pins        check that pyproject.toml, the Cargo.toml files and .python-version match versions.env"
 	@echo "make lock        re-pin core extension hashes (after changing versions.env)"
 	@echo "make cargo-lock  regenerate Cargo.lock (after changing Rust dependencies)"
 	@echo "ARCH=amd64|arm64 overrides the target architecture (default: $(ARCH))"
@@ -53,6 +53,8 @@ pins:
 	  { echo "Cargo.toml must pin duckdb-neo =0.$(NEO_MINOR).x to match versions.env"; exit 1; }
 	@grep -qx '$(PYTHON_VERSION)' .python-version || \
 	  { echo ".python-version must be $(PYTHON_VERSION) to match versions.env"; exit 1; }
+	@grep -q '^wasm-bindgen = "=$(WASM_BINDGEN_VERSION)"' extensions/webui/app/Cargo.toml || \
+	  { echo "extensions/webui/app/Cargo.toml must pin wasm-bindgen =$(WASM_BINDGEN_VERSION) to match versions.env"; exit 1; }
 
 lock:
 	uv run python scripts/fetch_core.py --update-lock --lock core-extensions.sha256 \

@@ -1,0 +1,64 @@
+//! The catalog the sidebar shows: attached databases, and the tables and views of one of them.
+//!
+//! DuckDB builds each answer as one JSON document in the shape of the protocol's type, which is read as that type.
+
+use serde::de::DeserializeOwned;
+use webui_protocol::{Catalog, Relation};
+
+use super::Engine;
+use crate::duck::{Conn, Result};
+use crate::lock;
+
+const CATALOG: &str = "
+    SELECT to_json({
+        duckdb_version: version(),
+        current_database: $1::VARCHAR,
+        current_schema: $2::VARCHAR,
+        databases: (
+            SELECT list({name: database_name, kind: type, path: path, read_only: readonly} ORDER BY database_name)
+            FROM duckdb_databases()
+            WHERE NOT internal
+        ),
+    })::VARCHAR";
+
+const RELATIONS: &str = "
+    WITH relations AS (
+        SELECT schema_name, table_name AS name, false AS is_view, estimated_size AS estimated_rows
+        FROM duckdb_tables()
+        WHERE database_name = $1 AND NOT internal
+        UNION ALL
+        SELECT schema_name, view_name, true, NULL
+        FROM duckdb_views()
+        WHERE database_name = $1 AND NOT internal
+    )
+    SELECT coalesce(to_json(list({
+        schema: schema_name,
+        name: name,
+        is_view: is_view,
+        estimated_rows: estimated_rows,
+        columns: (
+            SELECT list({name: column_name, data_type: data_type} ORDER BY column_index)
+            FROM duckdb_columns() AS c
+            WHERE c.database_name = $1 AND c.schema_name = relations.schema_name AND c.table_name = relations.name
+        ),
+    } ORDER BY schema_name, name)), '[]')::VARCHAR
+    FROM relations";
+
+/// Run a statement that returns one JSON document, and read it as `T`.
+fn document<T: DeserializeOwned>(conn: &Conn, sql: &str, parameters: &[&str]) -> Result<T> {
+    let rows = conn.rows(sql, parameters)?;
+    let json = rows.first().and_then(|row| row[0].as_ref()).ok_or("DuckDB returned no document")?;
+    serde_json::from_str(json).map_err(|error| format!("unexpected catalog document: {error}"))
+}
+
+impl Engine {
+    pub fn catalog(&self) -> Result<Catalog> {
+        let (database, schema) = lock(&self.search_path).clone();
+        document(&lock(&self.meta), CATALOG, &[&database, &schema])
+    }
+
+    /// The tables and views of one database, with their columns.
+    pub fn relations(&self, database: &str) -> Result<Vec<Relation>> {
+        document(&lock(&self.meta), RELATIONS, &[database])
+    }
+}

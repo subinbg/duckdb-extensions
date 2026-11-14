@@ -26,9 +26,9 @@ def metadata_field(value: str) -> bytes:
     return raw.ljust(32, b"\x00")
 
 
-def footer(platform: str, duckdb_version: str, extension_version: str, abi_type: str) -> bytes:
+def footer(platform: str, abi_version: str, extension_version: str, abi_type: str) -> bytes:
     # Stored last-to-first: DuckDB reverses the 8 fields when it parses them.
-    fields = ["", "", "", abi_type, extension_version, duckdb_version, platform, "4"]
+    fields = ["", "", "", abi_type, extension_version, abi_version, platform, "4"]
     return WASM_SECTION_HEADER + b"".join(metadata_field(f) for f in fields) + b"\x00" * SIGNATURE_SIZE
 
 
@@ -61,7 +61,6 @@ def package_extension(
     library_dir: Path,  # directory holding lib<name>.so
     platform: str,  # e.g. linux_amd64
     duckdb_version: str,  # exact DuckDB version, e.g. v2.0.0
-    abi_type: str = "C_STRUCT_UNSTABLE",  # C_STRUCT_UNSTABLE (C API v2, what duckdb-neo builds) or C_STRUCT
     signing_key: Path | None = None,  # RSA-2048 private key (PEM); omit for unsigned
     out: Path,  # repository directory
 ) -> None:
@@ -75,16 +74,25 @@ def package_extension(
 
     The output lands in DuckDB's repository layout: <out>/<duckdb_version>/<platform>/<name>.duckdb_extension
     Signing needs the openssl CLI.
+
+    The footer names the ABI the extension was built against.
+    The default is C_STRUCT_UNSTABLE (C API v2, what duckdb-neo builds), tied to the exact DuckDB version.
+    An extension on the stable C API sets `abi-type = "C_STRUCT"` and `capi-version` under [package.metadata.duckdb]
+    in its manifest; its footer then carries that API version, and it loads in every DuckDB that provides it.
     """
 
     package = tomllib.loads(manifest.read_text())["package"]
     name, version = package["name"], package["version"]
 
+    abi = package.get("metadata", {}).get("duckdb", {})
+    abi_type = abi.get("abi-type", "C_STRUCT_UNSTABLE")
+    abi_version = abi.get("capi-version", duckdb_version)
+
     if not NAME_PATTERN.match(name):
         raise SystemExit(f"package name {name!r} is not a valid extension name ([a-z0-9_]+)")
 
     library = library_dir / f"lib{name}.so"
-    signed_part = library.read_bytes() + footer(platform, duckdb_version, version, abi_type)
+    signed_part = library.read_bytes() + footer(platform, abi_version, version, abi_type)
     signed_part = signed_part[:-SIGNATURE_SIZE]
 
     if signing_key:
@@ -98,7 +106,7 @@ def package_extension(
     target.write_bytes(signed_part + signature)
 
     state = "signed" if signing_key else "unsigned"
-    print(f"{state} {target} ({name} {version}, {abi_type}, {platform}, {duckdb_version})")
+    print(f"{state} {target} ({name} {version}, {abi_type} {abi_version}, {platform})")
 
 
 if __name__ == "__main__":

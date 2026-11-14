@@ -1,5 +1,7 @@
 [workspace]
-members = ["extensions/*"]
+members = ["extensions/*", "extensions/webui/app", "extensions/webui/protocol"]
+# `cargo build` compiles the extensions; webui's browser application is built for wasm32 separately.
+default-members = ["extensions/*"]
 resolver = "3"
 
 [workspace.package]
@@ -8,7 +10,21 @@ publish = false
 
 [workspace.dependencies]
 duckdb-neo = { version = "=0.20000.1", features = ["build-extension"] }
+# The stable C API (v1), for extensions that open their own connections.
+libduckdb-sys = { version = "=1.20000.1", default-features = false, features = ["loadable-extension"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+webui-protocol = { path = "extensions/webui/protocol" }
 
 [profile.release]
 lto = true
 strip = true
+
+# The browser application is downloaded by every page load, so it and all it depends on are optimised for size.
+[profile.web]
+inherits = "release"
+opt-level = "z"
+codegen-units = 1
+panic = "abort"
+# wasm-bindgen reads the section that lists the WebAssembly features in use, which a full strip removes.
+strip = "debuginfo"

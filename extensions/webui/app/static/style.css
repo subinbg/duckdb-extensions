@@ -1,0 +1,885 @@
+/* The whole look of the application. Fonts are the system's, so nothing is fetched from elsewhere. */
+
+:root {
+  --bg: #f6f5f2;
+  --panel: #ffffff;
+  --head: #f1efea;
+  --line: #dcd8cf;
+  --line-soft: #ebe8e1;
+  --text: #1f1e1b;
+  --dim: #7a766c;
+  --accent: #2f5bd0;
+  --accent-soft: #e4ebfb;
+  --error: #b3261e;
+  --error-soft: #fbeceb;
+  --keyword: #7a3fb8;
+  --string: #2b7a3d;
+  --number: #b25a12;
+  --comment: #8a8578;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171614;
+    --panel: #1f1e1b;
+    --head: #262522;
+    --line: #3a3833;
+    --line-soft: #2c2b27;
+    --text: #ece9e2;
+    --dim: #9a958a;
+    --accent: #8fb0ff;
+    --accent-soft: #26324d;
+    --error: #ff8a80;
+    --error-soft: #3a2220;
+    --keyword: #c9a2f2;
+    --string: #8fd19e;
+    --number: #f0b27a;
+    --comment: #8a8578;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 var(--sans);
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  height: 100vh;
+}
+
+#app.with-inspector {
+  grid-template-columns: 264px minmax(0, 1fr) 380px;
+}
+
+.boot {
+  padding: 48px;
+  color: var(--dim);
+}
+
+.boot h1 {
+  color: var(--text);
+}
+
+code {
+  font-family: var(--mono);
+  background: var(--head);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.dim {
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.null {
+  color: var(--dim);
+  font-style: italic;
+}
+
+/* Buttons */
+
+.btn {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--dim);
+}
+
+.btn.ghost:hover {
+  color: var(--text);
+  background: var(--head);
+}
+
+.btn.run {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn.run {
+    color: #10131c;
+  }
+}
+
+.btn.stop {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.btn.seg {
+  border-radius: 0;
+  margin-right: -1px;
+}
+
+.btn.seg.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  position: relative;
+}
+
+.btn.add {
+  width: 100%;
+  padding: 8px;
+  border-style: dashed;
+  color: var(--dim);
+  background: transparent;
+}
+
+/* Sidebar: the catalog tree */
+
+#sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+#sidebar header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+#sidebar header .btn {
+  margin-left: auto;
+}
+
+.logo {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  background: url("/favicon.svg") center / contain no-repeat;
+}
+
+#tree {
+  overflow: auto;
+  padding: 6px 0;
+  flex: 1;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.node:hover {
+  background: var(--head);
+}
+
+.node.current .label {
+  font-weight: 600;
+}
+
+.node.schema,
+.node.column {
+  cursor: default;
+}
+
+.node.level-1 {
+  padding-left: 26px;
+}
+
+.node.level-2 {
+  padding-left: 30px;
+}
+
+.node.level-3 {
+  padding-left: 66px;
+}
+
+.node .label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node.column .label {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.twist {
+  width: 10px;
+  color: var(--dim);
+  flex: none;
+}
+
+.icon {
+  width: 14px;
+  flex: none;
+  color: var(--dim);
+  text-align: center;
+}
+
+.icon.database::before {
+  content: "◉";
+}
+
+.icon.schema::before {
+  content: "▤";
+}
+
+.icon.table::before {
+  content: "▦";
+}
+
+.icon.view::before {
+  content: "◫";
+}
+
+.node .open {
+  visibility: hidden;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 11px;
+}
+
+.node:hover .open {
+  visibility: visible;
+}
+
+/* Notebook */
+
+#main {
+  overflow-y: auto;
+  padding: 16px;
+  min-width: 0;
+}
+
+.cell {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.cell:focus-within {
+  border-color: var(--accent);
+}
+
+.cell-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.cell-bar .status {
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  overflow: hidden;
+}
+
+.progress > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.progress.busy > div {
+  width: 30%;
+  animation: slide 1.2s infinite ease-in-out;
+}
+
+@keyframes slide {
+  from {
+    margin-left: -30%;
+  }
+  to {
+    margin-left: 100%;
+  }
+}
+
+/* Editor: a text area whose own text is transparent, and over it a coloured copy of that text.
+   Both fill one grid cell, so the copy gives the text area its height. */
+
+.editor {
+  display: grid;
+  font: 13px/1.55 var(--mono);
+}
+
+.editor > * {
+  grid-area: 1 / 1;
+  margin: 0;
+  padding: 10px 12px;
+  min-height: 40px;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+  border: 0;
+}
+
+.editor .sql {
+  resize: none;
+  overflow: hidden;
+  outline: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
+}
+
+.editor .sql::placeholder {
+  color: var(--dim);
+}
+
+.editor .hl {
+  pointer-events: none;
+}
+
+.hl .kw {
+  color: var(--keyword);
+  font-weight: 600;
+}
+
+.hl .str {
+  color: var(--string);
+}
+
+.hl .num {
+  color: var(--number);
+}
+
+.hl .com {
+  color: var(--comment);
+  font-style: italic;
+}
+
+.hl .op {
+  color: var(--dim);
+}
+
+/* The completions hang below the word they are for, from an empty mark placed just before it. */
+
+.caret {
+  position: relative;
+}
+
+.completion,
+.popover {
+  z-index: 50;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+
+.completion {
+  position: absolute;
+  left: 0;
+  top: 1.55em;
+  min-width: 180px;
+  padding: 4px;
+  font: 12.5px var(--mono);
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.completion .item {
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.completion .item.chosen,
+.completion .item:hover {
+  background: var(--accent-soft);
+}
+
+/* Menus: drawn over the page, with a backdrop that a click anywhere else lands on. */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+}
+
+.popover {
+  position: fixed;
+  width: 264px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.popover > button {
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.popover > button:hover {
+  background: var(--accent-soft);
+}
+
+.menu-title {
+  padding: 4px 8px 6px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  padding: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.filter-form select {
+  grid-column: 1 / -1;
+}
+
+.filter-form select,
+.filter-form input {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  min-width: 0;
+}
+
+/* Messages under the editor */
+
+.note.error,
+#inspector .error {
+  margin: 0;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12.5px/1.5 var(--mono);
+  color: var(--error);
+  background: var(--error-soft);
+  border-top: 1px solid var(--line-soft);
+}
+
+.note {
+  padding: 8px 12px;
+  color: var(--dim);
+  border-top: 1px solid var(--line-soft);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px 2px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-size: 12px;
+}
+
+.chip button {
+  border: 0;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+/* Result grid. The application sets --columns on .grid to the widths of the columns,
+   and repeats the heights and the row number width below in grid.rs. */
+
+.grid {
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+}
+
+.ghead,
+.gr {
+  display: grid;
+  grid-template-columns: 64px var(--columns);
+  width: max-content;
+}
+
+.gbody {
+  position: relative;
+  overflow: auto;
+  max-height: min(62vh, 620px);
+  outline: 0;
+}
+
+.ghead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 40px;
+  background: var(--head);
+  border-bottom: 1px solid var(--line);
+}
+
+.hc {
+  position: relative;
+  padding: 3px 22px 3px 8px;
+  border-right: 1px solid var(--line);
+  cursor: pointer;
+  overflow: hidden;
+  user-select: none;
+}
+
+.hc:hover {
+  background: var(--line-soft);
+}
+
+.hc.filtered .hn {
+  color: var(--accent);
+}
+
+.hn {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sort {
+  margin-left: 5px;
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.ht {
+  font-size: 10.5px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hm {
+  position: absolute;
+  right: 6px;
+  top: 9px;
+  border: 0;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 2px 3px;
+  border-radius: 4px;
+}
+
+.hm:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.rz {
+  position: absolute;
+  right: -1px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+}
+
+.rz:hover {
+  background: var(--accent);
+}
+
+.rn {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  padding: 0 8px;
+  text-align: right;
+  font: 11.5px/24px var(--mono);
+  color: var(--dim);
+  background: var(--head);
+  border-right: 1px solid var(--line);
+}
+
+.gspace {
+  position: relative;
+}
+
+.grows {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.gr {
+  height: 24px;
+}
+
+.gr:hover .gc {
+  background: var(--head);
+}
+
+.gr.none {
+  display: block;
+  padding: 0 12px;
+  line-height: 24px;
+  color: var(--dim);
+}
+
+.gc {
+  height: 24px;
+  padding: 0 8px;
+  font: 12.5px/23px var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  cursor: default;
+}
+
+.gc.num {
+  text-align: right;
+}
+
+.gc.wait {
+  grid-column: 2 / -1;
+  color: var(--dim);
+}
+
+.gr .gc.sel {
+  background: var(--accent-soft);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Inspector: one whole value, or the statistics of one column */
+
+#inspector {
+  display: none;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.with-inspector #inspector {
+  display: block;
+}
+
+#inspector header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 8px 10px 12px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
+}
+
+#inspector .title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  overflow-wrap: anywhere;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.tools .seg + .btn:not(.seg) {
+  margin-left: 4px;
+}
+
+.pad {
+  padding: 12px;
+}
+
+.notice {
+  color: var(--dim);
+  font-size: 12px;
+  margin: 6px 0;
+}
+
+.value-text {
+  margin: 0;
+  padding: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12.5px/1.55 var(--mono);
+}
+
+.tree-value {
+  padding: 10px 12px 16px 4px;
+  font: 12.5px/1.6 var(--mono);
+}
+
+.tree-value details {
+  margin-left: 12px;
+}
+
+.tree-value summary {
+  cursor: pointer;
+}
+
+.tree-value .leaf {
+  margin-left: 26px;
+  overflow-wrap: anywhere;
+}
+
+.tree-value .k {
+  color: var(--keyword);
+  margin-right: 8px;
+}
+
+.tree-value .k::after {
+  content: ":";
+  color: var(--dim);
+}
+
+.tree-value .v.str {
+  color: var(--string);
+  white-space: pre-wrap;
+}
+
+.tree-value .v.num {
+  color: var(--number);
+}
+
+.tree-value .v.null,
+.tree-value .v.bool {
+  color: var(--dim);
+  font-style: italic;
+}
+
+.facts {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.facts th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--dim);
+  width: 84px;
+  padding: 3px 0;
+  vertical-align: top;
+}
+
+.facts td {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  padding: 3px 6px 3px 0;
+}
+
+#inspector h4 {
+  margin: 18px 0 8px;
+  font-size: 12px;
+  color: var(--dim);
+  font-weight: 600;
+}
+
+.top-row {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 6px;
+  margin-bottom: 2px;
+}
+
+.top-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent-soft);
+  border-radius: 3px;
+}
+
+.top-value {
+  position: relative;
+  font: 12.5px var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-row .dim {
+  position: relative;
+  white-space: nowrap;
+}
