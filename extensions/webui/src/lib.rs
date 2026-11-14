@@ -6,11 +6,10 @@
 //! CALL webui_stop();
 //! ```
 //!
-//! | Directory   | What it is                                                                                   |
-//! |-------------|----------------------------------------------------------------------------------------------|
-//! | `src/`      | This library, the extension: `server` answers HTTP, `engine` runs SQL through `duck`.        |
-//! | `protocol/` | The requests and answers, compiled into both the extension and the application.              |
-//! | `app/`      | The browser application, compiled to WebAssembly and embedded in this library by `build.rs`. |
+//! | Directory | What it is                                                                                         |
+//! |-----------|----------------------------------------------------------------------------------------------------|
+//! | `src/`    | This library: `server` answers HTTP, `engine` runs SQL through `duck`, `protocol` is what they say. |
+//! | `app/`    | The browser application: plain files, which `server` includes and serves as they are written.       |
 //!
 //! The extension is built against DuckDB's stable C API (v1) because it needs connections of its own,
 //! and the v2 API that `duckdb-neo` wraps gives an extension none.
@@ -22,7 +21,9 @@
 mod duck;
 mod engine;
 mod functions;
+mod protocol;
 mod server;
+mod sql;
 
 use std::ffi::CString;
 use std::path::PathBuf;

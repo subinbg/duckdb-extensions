@@ -3,11 +3,11 @@
 //! DuckDB builds each answer as one JSON document in the shape of the protocol's type, which is read as that type.
 
 use serde::de::DeserializeOwned;
-use webui_protocol::{Catalog, Relation};
 
 use super::Engine;
 use crate::duck::{Conn, Result};
 use crate::lock;
+use crate::protocol::{Catalog, Relation};
 
 const CATALOG: &str = "
     SELECT to_json({

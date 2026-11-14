@@ -1,9 +1,0 @@
-[package]
-# Types and SQL helpers shared by the webui extension (native) and its browser application (WebAssembly).
-name = "webui-protocol"
-version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
-
-[dependencies]
-serde = { workspace = true }

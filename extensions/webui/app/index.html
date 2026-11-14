@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DuckDB</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/style.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <header>
+          <span class="logo"></span>
+          <b>DuckDB</b>
+          <span class="dim" id="version"></span>
+          <button class="btn ghost" id="reload" title="Reload the catalog">⟳</button>
+        </header>
+        <div id="tree"></div>
+      </aside>
+      <main id="main">
+        <div id="cells"></div>
+        <button class="btn add" id="add">+ Add cell</button>
+      </main>
+      <aside id="inspector"></aside>
+    </div>
+    <div id="menu"></div>
+    <iframe id="download" hidden></iframe>
+
+    <div id="no-token" class="boot" hidden>
+      <h1>DuckDB</h1>
+      <p>This page needs the access token that is part of its address.</p>
+      <p>
+        Open the address that <code>CALL webui_start()</code> returned,
+        or run <code>CALL webui_status()</code> to see it again.
+      </p>
+    </div>
+  </body>
+</html>

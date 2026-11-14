@@ -23,12 +23,14 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering::SeqCst};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use webui_protocol::{CELL_PREVIEW_CHARS, CellValue, Column, INITIAL_ROWS, Outcome, Progress, ResultInfo, Rows};
-use webui_protocol::{RunResponse, View, sql};
-
 use crate::duck::{Appender, Chunk, Conn, ConnHandle, QueryResult, Result, Returned};
-use crate::lock;
+use crate::protocol::{CellValue, Column, Outcome, Progress, ResultInfo, Rows, RunResponse, View};
+use crate::{lock, sql};
 
+/// Rows a cell's result holds right after it ran; more are loaded as the grid scrolls.
+const INITIAL_ROWS: u64 = 1000;
+/// Longest text of a value in a page of rows; the application fetches the whole value when it is opened.
+const PREVIEW_CHARS: usize = 200;
 /// Rows one page request may return.
 const MAX_PAGE_ROWS: u64 = 2000;
 /// Chunks (of up to 2048 rows) appended to the cache in one transaction.
@@ -400,10 +402,8 @@ impl Engine {
         let held = self.held(id)?;
         let end = offset.saturating_add(limit.min(MAX_PAGE_ROWS));
 
-        // One character more than the preview, so the application can tell a cut value from a whole one.
-        let previews: Vec<_> = (0..held.columns.len())
-            .map(|index| format!("left(c{index}::VARCHAR, {})", CELL_PREVIEW_CHARS + 1))
-            .collect();
+        let previews: Vec<_> =
+            (0..held.columns.len()).map(|index| format!("left(c{index}::VARCHAR, {PREVIEW_CHARS})")).collect();
         let query = format!(
             "SELECT {} FROM {} WHERE rowid >= {offset} AND rowid < {end} ORDER BY rowid",
             previews.join(", "),

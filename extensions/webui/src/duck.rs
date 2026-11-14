@@ -8,7 +8,8 @@ use std::ffi::{CStr, CString, c_char};
 use std::ptr;
 
 use libduckdb_sys as ffi;
-use webui_protocol::Rows;
+
+use crate::protocol::Rows;
 
 pub type Result<T> = std::result::Result<T, String>;
 

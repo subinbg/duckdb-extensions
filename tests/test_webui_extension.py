@@ -1,6 +1,6 @@
 """The webui extension: a browser UI served from inside the DuckDB process, tested with no network access.
 
-The browser application itself is a WebAssembly program and is not run here.
+The browser application itself is JavaScript and is not run here.
 These tests cover what it is served from and everything it asks the extension to do, with the same requests.
 """
 
@@ -113,41 +113,39 @@ def test_start_reports_where_to_open_the_ui(ui: Ui) -> None:
     assert scalar(ui.con, "SELECT url FROM webui_start()") == f"{ui.url}/?token={ui.token}"
 
 
+def application_files(ui: Ui) -> dict[str, Reply]:
+    """The page and every file it loads: its style sheet, its icon, and the modules that `app.js` imports."""
+    files = {name: ui.request("GET", f"/{name}", token="") for name in ["", "style.css", "favicon.svg"]}
+    wanted = ["app.js"]
+    while wanted:
+        name = wanted.pop()
+        files[name] = ui.request("GET", f"/{name}", token="")
+        imported = re.findall(r'from "\./([a-z]+\.js)"', files[name].body.decode())
+        wanted += [module for module in imported if module not in files]
+    return files
+
+
 def test_application_is_served_from_the_extension(ui: Ui) -> None:
-    page = ui.request("GET", "/", token="")
-    assert page.status == 200
-    assert page.headers.get_content_type() == "text/html"
-    assert "default-src 'self'" in page.headers["Content-Security-Policy"]
+    files = application_files(ui)
+    assert len(files) > 10
+    assert b'src="/app.js"' in files[""].body
+    assert "default-src 'self'" in files[""].headers["Content-Security-Policy"]
 
-    expected = {
-        "boot.js": "text/javascript",
-        "webui_app.js": "text/javascript",
-        "webui_app_bg.wasm": "application/wasm",
-        "style.css": "text/css",
-        "favicon.svg": "image/svg+xml",
-    }
-    for name, content_type in expected.items():
-        asset = ui.request("GET", f"/{name}", token="")
-        assert (asset.status, asset.headers.get_content_type()) == (200, content_type), name
+    content_types = {"": "text/html", "style.css": "text/css", "favicon.svg": "image/svg+xml"}
+    for name, file in files.items():
+        expected = content_types.get(name, "text/javascript")
+        assert (file.status, file.headers.get_content_type()) == (200, expected), name
 
-    assert b'src="/boot.js"' in page.body
-    assert ui.request("GET", "/webui_app_bg.wasm", token="").body.startswith(b"\0asm")
+    assert ui.request("GET", "/missing.js", token="").status == 404
 
 
 def test_application_refers_to_no_other_host(ui: Ui) -> None:
-    """Nothing the browser loads names a host it would fetch from."""
-    # Never fetched: an XML namespace, and a documentation link in a comment of the generated JavaScript.
-    not_fetched = {
-        "http://www.w3.org/2000/svg",
-        "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/typeof#description",
-    }
-
+    """Nothing the browser loads names another host; the only URL is an XML namespace, which is not fetched."""
     urls: set[str] = set()
-    for name in ["", "boot.js", "webui_app.js", "style.css", "favicon.svg", "webui_app_bg.wasm"]:
-        content = ui.request("GET", f"/{name}", token="").body
-        urls.update(url.decode() for url in re.findall(rb"https?://[^\s\"'<>)\x00-\x1f\x7f-\xff]+", content))
+    for file in application_files(ui).values():
+        urls.update(re.findall(r"https?://[^\s\"'<>)`]+", file.body.decode()))
 
-    assert urls <= not_fetched
+    assert urls <= {"http://www.w3.org/2000/svg"}
 
 
 def test_requests_need_the_token(ui: Ui) -> None:
@@ -344,7 +342,7 @@ def test_long_values_are_previewed_in_pages_and_whole_on_request(ui: Ui) -> None
 
     (row,) = ui.rows(result["id"])
     assert row[0] is not None
-    assert len(row[0]) == 201
+    assert len(row[0]) == 200
     assert row[1:] == ["[1, 2, 3]", None]
 
     first = ui.ask("value", result=result["id"], row=0, column=0, limit=1000)

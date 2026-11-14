@@ -44,6 +44,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
@@ -385,25 +389,25 @@ code {
   pointer-events: none;
 }
 
-.hl .kw {
+.hl .keyword {
   color: var(--keyword);
   font-weight: 600;
 }
 
-.hl .str {
+.hl .string {
   color: var(--string);
 }
 
-.hl .num {
+.hl .number {
   color: var(--number);
 }
 
-.hl .com {
+.hl .comment {
   color: var(--comment);
   font-style: italic;
 }
 
-.hl .op {
+.hl .other {
   color: var(--dim);
 }
 
@@ -812,17 +816,17 @@ code {
   color: var(--dim);
 }
 
-.tree-value .v.str {
+.tree-value .v.string {
   color: var(--string);
   white-space: pre-wrap;
 }
 
-.tree-value .v.num {
+.tree-value .v.number {
   color: var(--number);
 }
 
 .tree-value .v.null,
-.tree-value .v.bool {
+.tree-value .v.boolean {
   color: var(--dim);
   font-style: italic;
 }

@@ -17,7 +17,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 libduckdb-sys.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
 tiny_http = "0.12"
-webui-protocol.workspace = true

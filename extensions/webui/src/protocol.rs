@@ -1,27 +1,14 @@
-//! What the webui extension and its browser application say to each other.
+//! What the browser application asks of the extension, and what it is answered.
 //!
-//! The application posts one [`Request`] as JSON and gets back the type named beside its variant.
-//! Both sides compile this crate, the extension natively and the application to WebAssembly,
-//! so a change to the protocol that one side misses is a compile error.
+//! The application posts one [`Request`] as JSON and gets back the type named beside its variant, as JSON.
+//! Its JavaScript reads these answers by the field names written here.
 
 use serde::{Deserialize, Serialize};
-
-pub mod sql;
-
-/// Longest cell text a page carries.
-/// The application shows it in the grid and fetches the whole value when a cell is opened.
-pub const CELL_PREVIEW_CHARS: usize = 200;
-
-/// Rows a cell's result holds right after it ran; more are loaded as the grid scrolls.
-pub const INITIAL_ROWS: u64 = 1000;
-
-/// The header that carries the access token on every request.
-pub const TOKEN_HEADER: &str = "X-Webui-Token";
 
 /// Rows of text as DuckDB prints them; `None` is NULL.
 pub type Rows = Vec<Vec<Option<String>>>;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Request {
     /// Answered with [`Catalog`].
@@ -63,12 +50,12 @@ pub enum Request {
 }
 
 /// Every failed request answers with this body.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize)]
 pub struct ErrorBody {
     pub error: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct Catalog {
     pub duckdb_version: String,
     pub databases: Vec<Database>,
@@ -77,7 +64,7 @@ pub struct Catalog {
     pub current_schema: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct Database {
     pub name: String,
     /// `duckdb`, `sqlite`, `postgres`, ...
@@ -87,7 +74,7 @@ pub struct Database {
 }
 
 /// A table or view of one database.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct Relation {
     pub schema: String,
     pub name: String,
@@ -96,19 +83,19 @@ pub struct Relation {
     pub columns: Vec<Column>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Column {
     pub name: String,
     pub data_type: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize)]
 pub struct RunResponse {
     pub outcome: Outcome,
     pub elapsed_ms: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Outcome {
     /// The last statement returned rows.
@@ -125,7 +112,7 @@ pub enum Outcome {
 }
 
 /// A result held by the server: the rows loaded so far sit in a cache that pages are read from.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize)]
 pub struct ResultInfo {
     pub id: u64,
     pub columns: Vec<Column>,
@@ -142,14 +129,8 @@ pub struct ResultInfo {
     pub view: View,
 }
 
-impl ResultInfo {
-    pub fn can_load_more(&self) -> bool {
-        !self.complete && (self.streaming || self.repeatable)
-    }
-}
-
 /// A sort order and filters applied to a result by DuckDB, over all of its rows.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct View {
     pub sort: Vec<SortKey>,
     pub filters: Vec<Filter>,
@@ -161,13 +142,13 @@ impl View {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SortKey {
     pub column: usize,
     pub descending: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Filter {
     pub column: usize,
     pub op: FilterOp,
@@ -175,7 +156,7 @@ pub struct Filter {
     pub value: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum FilterOp {
     Contains,
@@ -191,29 +172,8 @@ pub enum FilterOp {
     IsNotNull,
 }
 
-impl FilterOp {
-    /// Every operator with the words the application shows for it.
-    pub const ALL: [(FilterOp, &str); 11] = [
-        (FilterOp::Contains, "contains"),
-        (FilterOp::NotContains, "does not contain"),
-        (FilterOp::StartsWith, "starts with"),
-        (FilterOp::Equals, "="),
-        (FilterOp::NotEquals, "≠"),
-        (FilterOp::Greater, ">"),
-        (FilterOp::GreaterOrEqual, "≥"),
-        (FilterOp::Less, "<"),
-        (FilterOp::LessOrEqual, "≤"),
-        (FilterOp::IsNull, "is null"),
-        (FilterOp::IsNotNull, "is not null"),
-    ];
-
-    pub fn label(self) -> &'static str {
-        Self::ALL.iter().find(|(op, _)| *op == self).map_or("", |(_, label)| label)
-    }
-}
-
 /// One whole value.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize)]
 pub struct CellValue {
     /// The value as text, cut at the requested limit; `None` is NULL.
     pub text: Option<String>,
@@ -224,7 +184,7 @@ pub struct CellValue {
 }
 
 /// One column of a result, summarised by DuckDB.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize)]
 pub struct Summary {
     /// Whether every row was summarised.
     /// False for an unfinished result whose statement only the notebook's own connection can run.
@@ -236,13 +196,13 @@ pub struct Summary {
     pub top: Vec<(Option<String>, u64)>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize)]
 pub struct Progress {
     pub running: bool,
     pub percentage: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum ExportFormat {
     Csv,
@@ -261,7 +221,7 @@ impl ExportFormat {
 }
 
 /// The cells of the notebook, saved by the server so they survive a reload.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Notebook {
     pub cells: Vec<String>,
 }

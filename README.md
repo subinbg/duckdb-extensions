@@ -33,16 +33,15 @@ uv run pyrefly check      # type check
 
 | Path | Purpose |
 |---|---|
-| `versions.env` | Every pinned input: DuckDB version, core extension list, wasm-bindgen version and container images (`make` passes them to `docker build`) |
+| `versions.env` | Every pinned input: DuckDB version, core extension list and container images (`make` passes them to `docker build`) |
 | `pyproject.toml`, `uv.lock` | Python dependencies (also what the test container installs) and ruff/pyrefly configuration |
 | `core-extensions.sha256` | Pinned hashes of the official binaries for `linux_amd64` and `linux_arm64` |
 | `extensions/<name>/` | One Rust crate per custom extension; the package name is the extension name |
-| `extensions/webui/protocol/` | The requests and answers that `webui` and its browser application exchange, and the SQL lexer both use |
-| `extensions/webui/app/` | The browser application of `webui`, a Rust crate compiled to WebAssembly and embedded in the extension |
+| `extensions/webui/app/` | The browser application of `webui`: HTML, CSS and JavaScript files that the extension includes and serves as they are written |
 | `scripts/argpr.py` | Builds the scripts' command lines from their typed function signatures (standard library only, on top of `argparse`) |
 | `scripts/fetch_core.py` | Downloads core extensions and checks them against the lock file |
 | `scripts/package_extension.py` | Appends DuckDB's extension metadata to a compiled library and signs it |
-| `Dockerfile` | Stages `build-web`, `build-custom`, `fetch-core`, `package`, `dist`, `test` |
+| `Dockerfile` | Stages `build-custom`, `fetch-core`, `package`, `dist`, `test` |
 | `tests/` | pytest suite run inside the `test` image (`support.py` holds shared types and helpers) |
 
 ## Bundle layout
@@ -114,7 +113,7 @@ It replaces DuckDB's `ui` extension, which is left out of the bundle: that exten
 
 | | DuckDB `ui` | `webui` |
 |---|---|---|
-| Browser application | Downloaded on every page load, about 10 MB | Embedded in the extension, 0.7 MB; the page loads nothing from another host |
+| Browser application | Downloaded on every page load, about 10 MB | Included in the extension, 65 KB; the page loads nothing from another host |
 | Rows of a result | The first 50,000 | All of them: the grid loads rows as it scrolls, and the result is cached in DuckDB, which moves it to disk when memory runs short |
 | Sort and filter | In SQL only | From the column headers, computed by DuckDB over every row |
 | Row count and column summary | Computed after every run, on the notebook's connection | Count in the background on another connection, the `SUMMARIZE` of a column on request; neither delays the next cell |
@@ -123,7 +122,7 @@ It replaces DuckDB's `ui` extension, which is left out of the bundle: that exten
 | Export | The first 50,000 rows | Every row, as CSV, Parquet or JSON |
 | Access control | None: any local process can run SQL | A random token, part of the URL, required by every request |
 | Databases attached to your session | Three, for its own use | None |
-| Size of the extension | 56 MB | 1.6 MB |
+| Size of the extension | 56 MB | 1.0 MB |
 
 ### Options
 
@@ -137,22 +136,21 @@ It replaces DuckDB's `ui` extension, which is left out of the bundle: that exten
 
 ### How it works
 
-`extensions/webui` holds three crates. Only the first is an extension; the other two are parts of it.
+`extensions/webui` is one Rust crate, the extension, and one directory of files for the browser.
 
-| Crate | Directory | Compiled for | Depends on | Role |
-|---|---|---|---|---|
-| `webui` | `extensions/webui` | The server, as the extension | `webui-protocol`, `libduckdb-sys`, `tiny_http`, `serde_json` | The HTTP server (`server.rs`), and the engine that runs SQL (`engine/`) through wrappers over DuckDB's C API (`duck.rs`) |
-| `webui-protocol` | `extensions/webui/protocol` | Both | `serde` | One `Request` enum, the type of each answer, and the SQL lexer |
-| `webui-app` | `extensions/webui/app` | The browser, as WebAssembly | `webui-protocol`, `leptos`, `gloo-net`, `serde_json` | The page: catalog tree, cells, editor, grid, inspector |
+| Part | Where | What it is |
+|---|---|---|
+| Server | `src/server.rs` | Serves the application's files, and answers the requests it posts to `/api` |
+| Protocol | `src/protocol.rs` | One `Request` enum, and the type of the answer to each of its variants |
+| Engine | `src/engine/`, `src/duck.rs` | Runs SQL and holds results, through wrappers over DuckDB's C API |
+| Application | `app/` | The page: `index.html`, `style.css`, and JavaScript modules for the catalog tree, cells, editor, grid and inspector |
 
 What reaches the server is one file, `webui.duckdb_extension`:
 
-1. The build compiles `webui-app` to WebAssembly first, and `wasm-bindgen` writes the module and the JavaScript that loads it.
-2. `build.rs` of `webui` embeds those files and `app/static/` in the extension as bytes. `webui-protocol` is linked into the extension as ordinary Rust code, and a second copy of it is compiled into the WebAssembly module.
-3. `LOAD webui` makes DuckDB open that one file and call `webui_init_c_api`, which opens the extension's connections and registers `webui_start`, `webui_stop` and `webui_status`. Neither helper crate exists as a file at this point.
-4. `CALL webui_start()` starts the HTTP server. The browser fetches the embedded files from it and runs the module, which posts `Request` values as JSON to `/api` and reads each answer as the type the protocol names for it.
-
-Because both sides compile the same `webui-protocol`, a request or answer that one side changes and the other misses is a compile error.
+1. Compiling the extension includes the files of `app/` in it as they are written. Nothing compiles or bundles them, and the application has no dependencies.
+2. `LOAD webui` makes DuckDB open that one file and call `webui_init_c_api`, which opens the extension's connections and registers `webui_start`, `webui_stop` and `webui_status`.
+3. `CALL webui_start()` starts the HTTP server. The browser fetches the included files from it, and `app.js` imports the other modules.
+4. The page posts each request as JSON to `/api`, such as `{"page": {"result": 1, "offset": 0, "limit": 200}}`, and reads the answer by the field names of `src/protocol.rs`.
 
 The engine runs SQL on four connections of its own:
 
@@ -189,7 +187,7 @@ An extension that runs SQL on its own cannot use that template: the C API v2 giv
 2. Bump `duckdb-neo` and `libduckdb-sys` in `Cargo.toml` to the releases built for that DuckDB version, then run `make cargo-lock`.
 3. Run `make lock` to pin the new core extension hashes, then `make test`.
 
-`make pins` fails while `pyproject.toml`, the `Cargo.toml` files or `.python-version` disagree with `versions.env`, and `make test`, `make dist` and `make check` run it first.
+`make pins` fails while `pyproject.toml`, `Cargo.toml` or `.python-version` disagree with `versions.env`, and `make test`, `make dist` and `make check` run it first.
 
 `hello` uses the C API v2 through `duckdb-neo`, which DuckDB marks `C_STRUCT_UNSTABLE`: like the official C++ extensions, it loads only in the exact DuckDB version it was built for.
 `webui` uses the stable C API at version 1.5.6 (`C_STRUCT`), and loads in every DuckDB release that provides it.

@@ -1,8 +1,8 @@
 //! The HTTP server: the browser application's files, and the one address it posts its requests to.
 //!
 //! Nothing here reaches out to the network.
-//! The application is compiled into the extension, and every request must carry the token that is part of the URL
-//! `webui_start()` returned, so other users of the machine cannot run SQL through it.
+//! The application's files are compiled into the extension, and every request must carry the token that is part of
+//! the URL `webui_start()` returned, so other users of the machine cannot run SQL through it.
 
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -15,14 +15,35 @@ use std::time::Duration;
 
 use serde::Serialize;
 use tiny_http::{Header, Method, Response, ResponseBox};
-use webui_protocol::{ErrorBody, ExportFormat, Notebook, Request, TOKEN_HEADER};
 
 use crate::duck::Result;
 use crate::engine::Engine;
 use crate::lock;
+use crate::protocol::{ErrorBody, ExportFormat, Notebook, Request};
 
-include!(concat!(env!("OUT_DIR"), "/assets.rs"));
+/// The files of the browser application in `app/`, by the name they are served under.
+macro_rules! assets {
+    ($($name:literal),*) => { [$(($name, include_bytes!(concat!("../app/", $name)).as_slice())),*] };
+}
+static ASSETS: [(&str, &[u8]); 14] = assets![
+    "index.html",
+    "style.css",
+    "favicon.svg",
+    "app.js",
+    "api.js",
+    "catalog.js",
+    "cell.js",
+    "dom.js",
+    "editor.js",
+    "format.js",
+    "grid.js",
+    "inspector.js",
+    "menu.js",
+    "sql.js"
+];
 
+/// The header that carries the access token on every request.
+const TOKEN_HEADER: &str = "X-Webui-Token";
 pub const DEFAULT_PORT: u16 = 4213;
 /// Ports tried after the default one when it is taken and none was asked for.
 const PORT_ATTEMPTS: u16 = 20;
@@ -32,8 +53,7 @@ const MAX_BODY_BYTES: u64 = 16 << 20;
 const MAX_VALUE_CHARS: u64 = 16 << 20;
 
 /// No page of the application may load anything from another origin.
-const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
-     style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'";
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; base-uri 'none'; form-action 'none'";
 
 pub struct Options {
     pub host: String,
@@ -238,10 +258,6 @@ fn api(shared: &Shared, request: &mut tiny_http::Request) -> Reply {
 
 /// Serve one file of the embedded application.
 fn asset(name: &str) -> Reply {
-    if ASSETS.is_empty() {
-        let notice = "This build of the webui extension does not contain its browser application.";
-        return Ok(Response::from_string(notice).with_status_code(503).boxed());
-    }
     let not_found = || Failure(404, "not found".to_string());
     let (_, content) = ASSETS.iter().find(|(asset, _)| *asset == name).ok_or_else(not_found)?;
 
@@ -249,9 +265,7 @@ fn asset(name: &str) -> Reply {
         Some("html") => "text/html; charset=utf-8",
         Some("js") => "text/javascript; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
-        Some("wasm") => "application/wasm",
-        Some("svg") => "image/svg+xml",
-        _ => "application/octet-stream",
+        _ => "image/svg+xml",
     };
     Ok(Response::from_data(*content)
         .with_header(header("Content-Type", content_type))

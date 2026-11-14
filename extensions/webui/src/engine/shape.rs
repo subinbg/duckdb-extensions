@@ -8,11 +8,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use webui_protocol::{CELL_PREVIEW_CHARS, ExportFormat, Filter, FilterOp, ResultInfo, Summary, View};
-
-use super::{Engine, Held, Source, count_rows, number};
+use super::{Engine, Held, PREVIEW_CHARS, Source, count_rows, number};
 use crate::duck::{Conn, Result, quote_identifier, quote_literal};
 use crate::lock;
+use crate::protocol::{ExportFormat, Filter, FilterOp, ResultInfo, Summary, View};
 
 /// A column with more distinct values than this gets no list of its most frequent values.
 const MAX_GROUPS_FOR_TOP_VALUES: u64 = 100_000;
@@ -186,7 +185,7 @@ fn condition(filter: &Filter) -> String {
 
 /// Summarise column `column` of `rows`, a table or a parenthesised subquery, with DuckDB's `SUMMARIZE`.
 fn summary(conn: &Conn, rows: &str, column: usize, all_rows: bool) -> Result<Summary> {
-    let facts: Vec<_> = FACTS.iter().map(|(fact, _)| format!("left({fact}, {CELL_PREVIEW_CHARS})")).collect();
+    let facts: Vec<_> = FACTS.iter().map(|(fact, _)| format!("left({fact}, {PREVIEW_CHARS})")).collect();
     let summarized = conn.rows(
         &format!(
             "SELECT count::VARCHAR, approx_unique::VARCHAR, {} FROM (SUMMARIZE SELECT c{column} FROM {rows})",
@@ -199,7 +198,7 @@ fn summary(conn: &Conn, rows: &str, column: usize, all_rows: bool) -> Result<Sum
     let top = match number(&counts[1]) <= MAX_GROUPS_FOR_TOP_VALUES {
         true => conn.rows(
             &format!(
-                "SELECT left(value::VARCHAR, {CELL_PREVIEW_CHARS}), rows::VARCHAR FROM \
+                "SELECT left(value::VARCHAR, {PREVIEW_CHARS}), rows::VARCHAR FROM \
                  (SELECT c{column} AS value, count(*) AS rows FROM {rows} GROUP BY ALL ORDER BY rows DESC LIMIT 10)"
             ),
             &[],
