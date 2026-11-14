@@ -1,4 +1,4 @@
-# SHA-256 of the uncompressed official extension binaries. Regenerate with `make lock`.
+# SHA-256 of the uncompressed official extension binaries. Regenerate with `fetch_core.py --update-lock`.
 3f37797ca9a4ef3b5a07e65278c653fe0a32f7edea1498c801022fed49afedc7  v2.0.0/linux_amd64/avro.duckdb_extension
 77e6c429aa04f25da7962572f12b19113e0ce46080fa1365ad66017aadcdb68d  v2.0.0/linux_amd64/httpfs.duckdb_extension
 b93676e544e5c6843915fb3392e3b3c35859c065fa6ace7a26cb46ca4394e56d  v2.0.0/linux_amd64/iceberg.duckdb_extension
@@ -7,3 +7,7 @@ b93676e544e5c6843915fb3392e3b3c35859c065fa6ace7a26cb46ca4394e56d  v2.0.0/linux_a
 53f7aea1a0448ea62ef9b63f95da37c5766070084f14f14110e275e76382e7b2  v2.0.0/linux_arm64/httpfs.duckdb_extension
 5616c30201099564326826d223aeea19b59f15744a981b074a906fb2b9dd4f44  v2.0.0/linux_arm64/iceberg.duckdb_extension
 c2dc454512553bc09b075172893189435281e6d7ea6297dd211fbc93db985050  v2.0.0/linux_arm64/sqlite_scanner.duckdb_extension
+add62d712421e10adf9ddc8711cf14d2ee382baa14e4281e3d965fe7e5f7779e  v2.0.0/osx_arm64/avro.duckdb_extension
+c2d72a98ad081bf4d62c908b8d9f60b70ab1b83faa9141fc7e7d53526658761d  v2.0.0/osx_arm64/httpfs.duckdb_extension
+30afc5f75b29497cd3a56f92e7b55febafbcca2e9c0846bb78599518094e55a7  v2.0.0/osx_arm64/iceberg.duckdb_extension
+752176198a7aca3aee3f32136938e7fb390c7d80b8536d4d5c7f08d111213540  v2.0.0/osx_arm64/sqlite_scanner.duckdb_extension

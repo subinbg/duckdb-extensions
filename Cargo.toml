@@ -6,10 +6,12 @@ resolver = "3"
 edition = "2024"
 publish = false
 
+# Both crates bind DuckDB's stable C API (v1), so an extension loads in every DuckDB release that provides it.
 [workspace.dependencies]
-duckdb-neo = { version = "=0.20000.1", features = ["build-extension"] }
-# The stable C API (v1), for extensions that open their own connections.
-libduckdb-sys = { version = "=1.20000.1", default-features = false, features = ["loadable-extension"] }
+# Safe wrappers, for an extension that registers functions.
+duckdb = { version = "=1.20000.2", default-features = false, features = ["loadable-extension", "vscalar"] }
+# The C API itself, for an extension that needs more of it.
+libduckdb-sys = { version = "=1.20000.2", default-features = false, features = ["loadable-extension"] }
 
 [profile.release]
 lto = true

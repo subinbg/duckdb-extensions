@@ -5,58 +5,53 @@
 //! SELECT hello(NULL);    -- NULL
 //! ```
 
-use duckdb_neo::{
-    DuckDBType, Result,
-    connection::Context,
-    data_chunk::VectorCollection,
-    duckdb_entrypoint_c_api_v2,
-    extension::Extension,
-    scalar::{ScalarCallbacks, ScalarFunctionBuilder},
-    signature::{FunctionParameter, SignatureBuilder},
-    vector::{Unknown, Vector},
-};
+use std::error::Error;
+
+use duckdb::core::{DataChunkHandle, Inserter, LogicalTypeId};
+use duckdb::types::DuckString;
+use duckdb::vscalar::{ScalarFunctionSignature, VScalar};
+use duckdb::vtab::arrow::WritableVector;
+use duckdb::{Connection, duckdb_entrypoint_c_api, ffi};
 
 struct Hello;
 
-impl ScalarCallbacks for Hello {
-    type BindData = ();
-    type InitData = ();
+impl VScalar for Hello {
+    type State = ();
 
     /// Runs once per input chunk (up to 2048 rows): one output value per input row.
-    fn exec(
-        &self,
-        _bind_data: Option<&Self::BindData>,
-        _init_data: Option<&mut Self::InitData>,
-        _context: &Context,
-        vectors: &mut VectorCollection,
-        output: Vector<'_, Unknown>,
-    ) -> Result<()> {
-        let mut output = output.cast::<String>()?;
-        output.set_size(vectors.row_count()?)?;
+    fn invoke(
+        _state: &Self::State,
+        input: &mut DataChunkHandle,
+        output: &mut dyn WritableVector,
+    ) -> Result<(), Box<dyn Error>> {
+        let names = input.flat_vector(0);
+        let mut greetings = output.flat_vector();
 
-        let input = vectors.get_vector_at::<String>(0)?;
-        let reader = input.reader()?;
-        let mut writer = output.writer()?;
+        // The column is VARCHAR, as `signatures` declares, and holds `input.len()` rows.
+        let texts = unsafe { names.as_slice_with_len::<ffi::duckdb_string_t>(input.len()) };
 
-        for (row, name) in reader.iter().enumerate() {
-            match name {
-                Some(name) => writer.set(row, Some(&format!("Hello, {name}!")))?,
-                None => writer.set(row, None)?,
+        for (row, text) in texts.iter().enumerate() {
+            if names.row_is_null(row as u64) {
+                greetings.set_null(row);
+                continue;
             }
+
+            let name = DuckString::new(&mut { *text }).as_str().to_string();
+            greetings.insert(row, format!("Hello, {name}!").as_str());
         }
         Ok(())
     }
+
+    fn signatures() -> Vec<ScalarFunctionSignature> {
+        vec![ScalarFunctionSignature::exact(vec![LogicalTypeId::Varchar.into()], LogicalTypeId::Varchar.into())]
+    }
 }
 
-/// Entry point DuckDB calls on `LOAD hello` (exported as `hello_init_c_api_v2`).
-#[duckdb_entrypoint_c_api_v2(extension_name = "hello", api_version = "2.0.0")]
-pub fn entrypoint(extension: &Extension) -> Result<()> {
-    ScalarFunctionBuilder::new(
-        "hello",
-        SignatureBuilder::new()
-            .param(FunctionParameter::new::<String>("name"))
-            .return_type(String::logical_type(extension)?),
-        Hello,
-    )
-    .register(extension)
+/// Entry point DuckDB calls on `LOAD hello` (exported as `hello_init_c_api`).
+///
+/// `min_duckdb_version` is the stable C API version asked for; `capi-version` in `Cargo.toml` repeats it.
+#[duckdb_entrypoint_c_api(ext_name = "hello", min_duckdb_version = "v1.5.6")]
+pub unsafe fn entrypoint(connection: Connection) -> Result<(), Box<dyn Error>> {
+    connection.register_scalar_function::<Hello>("hello")?;
+    Ok(())
 }

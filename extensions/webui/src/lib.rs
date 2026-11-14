@@ -11,8 +11,7 @@
 //! | `src/`    | This library: `server` answers HTTP, `engine` runs SQL through `duck`, `protocol` is what they say. |
 //! | `app/`    | The browser application: plain files, which `server` includes and serves as they are written.       |
 //!
-//! The extension is built against DuckDB's stable C API (v1) because it needs connections of its own,
-//! and the v2 API that `duckdb-neo` wraps gives an extension none.
+//! The extension calls DuckDB's stable C API (v1) directly, for the connections it opens of its own.
 //! The database handle is lent only while the extension loads, so every connection is opened then.
 //!
 //! A process may load the extension into several databases; each gets its own [`Engine`].

@@ -2,16 +2,19 @@
 
 import gzip
 import hashlib
-import re
 import sys
+import tomllib
 import urllib.request
 from pathlib import Path
 
-from argpr import ArgumentError, command, init
+from argpr import command, init
+from paths import CORE_REPOSITORY, PLATFORM, ROOT, SUFFIX, VERSION
 
 BASE_URL = "https://extensions.duckdb.org"
-NAME_PATTERN = re.compile(r"^[a-z0-9_]+$")
-LOCK_HEADER = "# SHA-256 of the uncompressed official extension binaries. Regenerate with `make lock`."
+LOCK = ROOT / "core-extensions.sha256"
+LOCK_HEADER = (
+    "# SHA-256 of the uncompressed official extension binaries. Regenerate with `fetch_core.py --update-lock`."
+)
 
 
 def read_lock(path: Path) -> dict[str, str]:
@@ -32,46 +35,40 @@ def write_lock(path: Path, entries: dict[str, str]) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
-def download(version: str, platform: str, name: str) -> bytes:
-    url = f"{BASE_URL}/{version}/{platform}/{name}.duckdb_extension.gz"
-
+def download(rel: str) -> bytes:
     # The CDN answers 403 to urllib's default "Python-urllib/x.y" User-Agent.
-    request = urllib.request.Request(url, headers={"User-Agent": "duckdb-extension-mirror"})
+    request = urllib.request.Request(f"{BASE_URL}/{rel}.gz", headers={"User-Agent": "duckdb-extension-mirror"})
     with urllib.request.urlopen(request, timeout=300) as response:
         return gzip.decompress(response.read())
 
 
 @command
 def fetch_core(
-    extensions: list[str],
-    /,
     *,
-    version: str,  # e.g. v2.0.0
-    platform: list[str],  # e.g. linux_amd64; repeat the flag for several
-    lock: Path,
-    out: Path | None = None,  # repository directory to write binaries into
-    update_lock: bool = False,  # rewrite the lock instead of verifying against it
+    out: Path = CORE_REPOSITORY,  # repository directory to download into
+    update_lock: bool = False,  # rewrite the lock for every platform instead of downloading for this one
 ) -> int:
-    """Download official DuckDB core extensions and check them against a SHA-256 lock file.
+    """Download DuckDB's official core extensions and check them against the SHA-256 lock file.
 
-    Binaries are written in DuckDB's repository layout, <out>/<version>/<platform>/<name>.duckdb_extension,
-    so the output directory can be used directly as `custom_extension_repository`.
+    pyproject.toml lists the extensions under [tool.duckdb-extensions].
+    They are downloaded for the installed DuckDB client, its version and its platform,
+    and written in DuckDB's repository layout: <out>/<version>/<platform>/<name>.duckdb_extension
 
     DuckDB verifies each file's signature on INSTALL/LOAD anyway.
-    The lock adds a second check: CI fails if upstream ever serves different bytes for the same version.
+    The lock adds a second check: the download fails if upstream ever serves different bytes for the same version.
+
+    --update-lock writes no extension: it pins the hashes of every platform that pyproject.toml lists.
     """
 
-    for name in extensions:
-        if not NAME_PATTERN.match(name):
-            raise ArgumentError(f"invalid extension name {name!r}")
-
-    pinned: dict[str, str] = {} if update_lock else read_lock(lock)
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["duckdb-extensions"]
+    platforms: list[str] = config["platforms"] if update_lock else [PLATFORM]
+    pinned: dict[str, str] = {} if update_lock else read_lock(LOCK)
     failures = 0
 
-    for plat in platform:
-        for name in extensions:
-            rel = f"{version}/{plat}/{name}.duckdb_extension"
-            data = download(version, plat, name)
+    for platform in platforms:
+        for name in config["core"]:
+            rel = f"{VERSION}/{platform}/{name}{SUFFIX}"
+            data = download(rel)
             digest = hashlib.sha256(data).hexdigest()
 
             if update_lock:
@@ -80,8 +77,7 @@ def fetch_core(
                 print(f"FAIL {rel}: lock has {pinned.get(rel)}, downloaded {digest}", file=sys.stderr)
                 failures += 1
                 continue
-
-            if out:
+            else:
                 target = out / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
@@ -89,7 +85,7 @@ def fetch_core(
             print(f"ok   {rel}  {digest}")
 
     if update_lock:
-        write_lock(lock, pinned)
+        write_lock(LOCK, pinned)
 
     return 1 if failures else 0
 

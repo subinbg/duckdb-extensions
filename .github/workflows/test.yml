@@ -1,0 +1,22 @@
+# The GitHub Actions system: runners that come with cargo, and get uv.
+# What they build and test is not decided here: every `run` below is a command of
+# README.md "Build, install, test", as written there.
+
+name: test
+on: push
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+
+      - run: uv sync --locked
+      - run: uv run scripts/fetch_core.py
+      - run: cargo test --locked
+      - run: uv run scripts/build_custom.py
+      - run: uv run pytest

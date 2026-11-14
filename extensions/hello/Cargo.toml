@@ -6,8 +6,12 @@ version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
 
+# The stable C API version the extension asks DuckDB for; scripts/build_custom.py writes it into the extension footer.
+[package.metadata.duckdb]
+capi-version = "v1.5.6"
+
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-duckdb-neo.workspace = true
+duckdb.workspace = true

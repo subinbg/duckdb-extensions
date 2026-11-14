@@ -1,5 +1,6 @@
 .git
 target
+build
 dist
 keys
 **/__pycache__
