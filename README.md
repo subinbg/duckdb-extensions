@@ -1,44 +1,44 @@
 # duckdb-extensions
 
-Builds an offline extension bundle for the DuckDB Python client, for servers that cannot reach `extensions.duckdb.org`. A bundle is one tarball (meant to be a GitHub Release asset) with:
+Builds an offline extension bundle for the DuckDB Python client, for machines that cannot reach `extensions.duckdb.org`. A bundle is one tarball (meant to be a GitHub Release asset) with:
 
-1. DuckDB's official core extensions `httpfs`, `iceberg`, `avro` (needed by iceberg) and `sqlite_scanner`, byte for byte as DuckDB publishes them and pinned by SHA-256.
-2. Our own extensions, written in Rust against DuckDB's stable C API and signed with our own RSA key: `hello`, a template, and `webui`, a browser UI that needs no network access.
+1. DuckDB's official core extensions `httpfs`, `iceberg`, `avro` (needed by iceberg) and `sqlite_scanner`, byte for byte as DuckDB publishes them.
+2. Our own extensions, written in Rust against DuckDB's stable C API: `hello`, a template, and `webui`, a browser UI that needs no network access.
 
-Building, installing and testing take cargo and [uv](https://docs.astral.sh/uv/), on any system that has them.
+## Build and test
 
-## Build, install, test
+Building takes cargo and Python 3.12 or later, with no Python package. Testing takes [uv](https://docs.astral.sh/uv/), which installs the DuckDB client and pytest.
 
 ```bash
-uv sync                         # Python dependencies, into .venv
-uv run scripts/fetch_core.py    # download the official extensions; the only step that needs a network
-cargo test --locked             # unit tests of our extensions
-uv run scripts/build_custom.py  # compile our extensions, and sign them
-uv run pytest                   # install both kinds into a temporary directory, and test what loads
+cargo test --locked  # unit tests of our extensions
 
-uv run scripts/install.py       # install both kinds for use
-uv run scripts/bundle.py        # pack both kinds into dist/ for a release
+python scripts/build.py --duckdb-version v2.0.0 --core build/core --custom build/custom \
+  httpfs iceberg avro sqlite_scanner
+
+uv run pytest  # tests build/core and build/custom
 ```
 
-The commands take no arguments. Each works on the DuckDB version and platform of the installed Python client, and in the paths below, which a system sets as environment variables; `--help` shows the same paths as flags.
+`build.py` is given everything it builds for, and works for the machine it runs on:
 
-| Variable | Default, in this repository | Written by | Read by |
-|---|---|---|---|
-| `DUCKDB_CORE_REPOSITORY` | `build/repository/core` | `fetch_core.py`: the downloaded official extensions | `install.py`, tests |
-| `DUCKDB_CUSTOM_REPOSITORY` | `build/repository/custom` | `build_custom.py`: our signed extensions and their public key | `install.py`, tests |
-| `DUCKDB_CORE_DIRECTORY` | `build/extensions/core` | `install.py`: the installed official extensions | DuckDB, to load them |
-| `DUCKDB_CUSTOM_DIRECTORY` | `build/extensions/custom` | `install.py`: our installed extensions, and the key DuckDB trusts for them | DuckDB, to load them |
-| `DUCKDB_SIGNING_KEY` | `keys/signing-key.pem` | `build_custom.py`, once, as a development key | `build_custom.py` |
+| Argument | Meaning |
+|---|---|
+| `httpfs iceberg ...` | The official extensions to download from `extensions.duckdb.org`; one already in `--core` is not downloaded again |
+| `--duckdb-version` | The DuckDB release to build for; `pyproject.toml` pins the same version of the client |
+| `--core` | The extension directory the official extensions are written into |
+| `--custom` | The extension directory our extensions are written into, compiled from every crate under `extensions/` |
+| `--dist` | Optional: a directory to also write the release tarball and its SHA-256 into |
 
-DuckDB installs an extension from a repository into an extension directory, and loads it from there. Both repositories are laid out as DuckDB reads them, `<repository>/<version>/<platform>/<name>.duckdb_extension`.
+An extension directory is what DuckDB loads from: `<directory>/<version>/<platform>/<name>.duckdb_extension`. Nothing is installed or copied after the build.
+
+The tests read `build/core` and `build/custom`. For directories elsewhere, set `DUCKDB_CORE_EXTENSIONS` and `DUCKDB_CUSTOM_EXTENSIONS`.
 
 ### Systems
 
-A system provides cargo and uv, and sets the variables it wants to change. What is built and tested is the same everywhere: the commands above.
+A system provides cargo, Python and uv. What is built and tested is the same everywhere: the commands above.
 
 | System | Set up in | Run with |
 |---|---|---|
-| Your machine | [rustup](https://rustup.rs) and uv, installed once | The commands above |
+| Your machine | [rustup](https://rustup.rs) and uv, installed once; `uv run scripts/build.py` uses uv's Python | The commands above |
 | Docker | `Dockerfile` for the images and tools, `Makefile` for how `docker` is called | `make test`, `make dist` |
 | GitHub Actions | `.github/workflows/test.yml` | Every push |
 
@@ -46,51 +46,38 @@ The Docker system builds on AlmaLinux 8 and tests in a second image that has Pyt
 
 ## Using the extensions
 
-After `install.py`, a process opens its database with the two extension directories:
+A process opens its database with the extension directories, from a build or from an unpacked tarball (`core/` and `custom/`):
 
 ```python
 import duckdb
 
 con = duckdb.connect(
     config={
-        "extension_directories": ["/data/duckdb/core", "/data/duckdb/custom"],
-        "extension_repository_directory": "/data/duckdb/custom",  # the key our extensions are checked against
-        "autoinstall_known_extensions": False,  # never contact extensions.duckdb.org
+        "extension_directories": ["/opt/duckdb/core", "/opt/duckdb/custom"],
+        "allow_unsigned_extensions": True,  # needed for our extensions
+        "autoinstall_known_extensions": False,  # never contact extensions.duckdb.org on its own
     }
 )
 con.execute("ATTACH 'app.sqlite' AS app (TYPE sqlite)")  # official extensions load on demand
-con.execute("LOAD hello FROM custom")  # ours need LOAD ... FROM
+con.execute("LOAD hello")  # ours are loaded by name
 con.execute("SELECT hello('duck')").fetchall()  # [('Hello, duck!',)]
 ```
 
-`settings()` in `scripts/install.py` returns this configuration for the configured directories. Signature checks stay on: DuckDB verifies the official extensions against its own keys, and ours against the public key that `install.py` registered under the name `custom`.
+The client must be exactly the version the directories were built for (`pip install duckdb==2.0.0`). Extensions are loaded into an open database, so each newly opened database loads them again.
 
-### On a server
+### Signature checks
 
-A server installs from a bundle instead of building. It needs Python with `duckdb` at exactly the bundle's version (`pip install duckdb==2.0.0`) and a checkout of this repository for `scripts/install.py`.
+DuckDB checks every extension it loads against its own keys, which the official extensions pass. Ours carry no signature, so a database that loads them is opened with `allow_unsigned_extensions`, and that setting turns the check off for every extension of that database.
 
-```bash
-mkdir -p /opt/duckdb/bundle && tar -xzf duckdb-extensions-v2.0.0-linux_amd64.tar.gz -C /opt/duckdb/bundle
-
-export DUCKDB_CORE_REPOSITORY=/opt/duckdb/bundle/core DUCKDB_CUSTOM_REPOSITORY=/opt/duckdb/bundle/custom
-export DUCKDB_CORE_DIRECTORY=/data/duckdb/core DUCKDB_CUSTOM_DIRECTORY=/data/duckdb/custom
-python scripts/install.py
-```
-
-| Path in the tarball | Contents |
-|---|---|
-| `core/<version>/<platform>/*.duckdb_extension` | Official extensions, signed by DuckDB |
-| `custom/<version>/<platform>/*.duckdb_extension` | Our extensions, signed with our key |
-| `custom/public-key.pem` | Our public key |
-
-`install.py` registers the public key it finds in the bundle. Before installing a new bundle, compare that file with a copy you trust (for example this repository once a real key is in use): a bundle from someone else carries their key.
+1. Without the setting, the official extensions load as above and ours are refused.
+2. With it, DuckDB checks nothing: the official files are then checked by us. `tests/test_core_extensions.py` loads each one in a database that has the check on, and the tarball's SHA-256 covers the way to another machine.
 
 ## Browser UI (`webui`)
 
 `webui` serves a notebook UI for the database from inside the Python process, without the DuckDB CLI and without any network access:
 
 ```python
-con.execute("LOAD webui FROM custom")
+con.execute("LOAD webui")
 (url,) = con.execute("CALL webui_start()").fetchone()  # http://127.0.0.1:4213/?token=...
 ```
 
@@ -165,23 +152,18 @@ The engine runs SQL on four connections of its own:
 
 | Path | Purpose |
 |---|---|
-| `pyproject.toml`, `uv.lock` | The DuckDB version, the core extensions to mirror, Python dependencies, and ruff/pyrefly/pytest configuration |
-| `core-extensions.sha256` | Pinned hashes of the official binaries, for every platform that `pyproject.toml` lists |
+| `pyproject.toml`, `uv.lock` | The version of the DuckDB client, test dependencies, and ruff/pyrefly/pytest configuration |
 | `extensions/<name>/` | One Rust crate per custom extension; the package name is the extension name |
 | `extensions/webui/app/` | The browser application of `webui`: HTML, CSS and JavaScript files that the extension includes and serves as they are written |
-| `scripts/paths.py` | The paths of the table above, and the version and platform of the installed DuckDB client |
-| `scripts/fetch_core.py` | Downloads core extensions and checks them against the lock file |
-| `scripts/build_custom.py` | Compiles the crates, appends DuckDB's extension metadata to each library and signs it |
-| `scripts/install.py` | Installs both repositories into extension directories |
-| `scripts/bundle.py` | Packs both repositories into the release tarball |
-| `scripts/argpr.py` | Builds the scripts' command lines from their typed function signatures (standard library only, on top of `argparse`) |
-| `tests/` | pytest suite; its fixtures install with `scripts/install.py` (`support.py` holds shared types and helpers) |
+| `scripts/build.py` | Downloads the official extensions, compiles ours and appends DuckDB's extension metadata to each library |
+| `scripts/argpr.py` | Builds the script's command line from its typed function signature (standard library only, on top of `argparse`) |
+| `tests/` | pytest suite (`conftest.py` names the two directories, `support.py` holds shared helpers) |
 | `Dockerfile`, `Makefile` | The Docker system |
 | `.github/workflows/test.yml` | The GitHub Actions system |
 
 ## Python tooling
 
-The Python code (`scripts/`, `tests/`) is a uv project (`pyproject.toml`, `package = false`: dependencies only, nothing is built or installed as a package). Its one runtime dependency is `duckdb`, which is all `install.py` needs. Three groups add to it: `build` (cryptography, which signs our extensions), `test` (pytest) and `dev` (both, plus ruff and pyrefly). `uv sync` installs everything; the Docker images install one group each, from `uv.lock` (hash-checked, and the build fails if `uv.lock` is out of date with `pyproject.toml`).
+The Python code (`scripts/`, `tests/`) is a uv project (`pyproject.toml`, `package = false`: dependencies only, nothing is built or installed as a package). Its one runtime dependency is `duckdb`; the groups `test` (pytest) and `dev` (pytest, ruff and pyrefly) add to it. `scripts/build.py` uses the standard library only.
 
 ```bash
 uv run ruff format        # format
@@ -196,24 +178,18 @@ make check                # all three as checks, and that uv.lock is current
 2. Change `ext_name` in the `#[duckdb_entrypoint_c_api]` attribute to the same name.
 3. Run `cargo build`, which adds the crate to `Cargo.lock`, then build and test as above, and add tests for it under `tests/`.
 
-Both extensions are built on DuckDB's stable C API (ABI `C_STRUCT`), at version 1.5.6, and load in every DuckDB release that provides it. `hello` uses the safe wrappers of the `duckdb` crate. `webui` calls the C API itself through `libduckdb-sys`, for the connections it opens of its own. Each crate names the API version twice: where its entry point asks DuckDB for it, and as `capi-version` in its `Cargo.toml`, which `scripts/build_custom.py` writes into the extension file.
+Both extensions are built on DuckDB's stable C API (ABI `C_STRUCT`), at version 1.5.6, and load in every DuckDB release that provides it. `hello` uses the safe wrappers of the `duckdb` crate. `webui` calls the C API itself through `libduckdb-sys`, for the connections it opens of its own. Each crate names the API version twice: where its entry point asks DuckDB for it, and as `capi-version` in its `Cargo.toml`, which `scripts/build.py` writes into the extension file.
 
 ## Upgrading DuckDB
 
-1. Run `uv add duckdb==<version>`, so `pyproject.toml` and `uv.lock` name the new version. Every script takes the version from the installed client.
-2. Run `uv run scripts/fetch_core.py --update-lock` to pin the new core extension hashes.
+1. Run `uv add duckdb==<version>`, so `pyproject.toml` and `uv.lock` name the new client.
+2. Change `--duckdb-version` where `build.py` is called: in this file, the `Dockerfile` and the workflow. A test fails while it differs from the client.
 3. Build and test as above.
 
 The Rust crates need no change for a DuckDB release that still provides their C API version. To use a newer C API, raise `duckdb` and `libduckdb-sys` in `Cargo.toml` together, and the API version in each crate.
 
-## Signing keys
-
-The key must be RSA-2048 (DuckDB's signature slot is 256 bytes). `build_custom.py` creates a development key at `keys/signing-key.pem` (ignored by git) when there is none. For a release, point `DUCKDB_SIGNING_KEY` at the private key; the build stops if that file is missing instead of creating a new key.
-
-Under Docker the same holds for `SIGNING_KEY=path/to/key.pem make dist`. The key reaches the build only as a BuildKit secret, never as an image layer. Without `SIGNING_KEY`, `make` passes the development key of the checkout, and without that the build signs with a development key of its own.
-
 ## Platforms
 
-Every command works for the platform it runs on: the scripts ask the installed DuckDB client for it. Extensions of several platforms can share a repository directory, since each has its own subdirectory.
+`build.py` builds for the machine it runs on, Linux or macOS on amd64 or arm64. Extensions of several platforms and versions can share a directory, since each has its own subdirectory.
 
 A release for Linux comes from the Docker system, which compiles on AlmaLinux 8 (glibc 2.28), the same floor as DuckDB's own Linux binaries; an extension compiled on a newer Linux needs at least that system's glibc. `make` builds for the host architecture; `ARCH=amd64` or `ARCH=arm64` overrides it. Run the `amd64` tests on an amd64 machine (such as a GitHub-hosted Ubuntu runner): under emulation on Apple Silicon, DuckDB's signature check fails even for official extensions installed online.

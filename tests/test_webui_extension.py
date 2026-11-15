@@ -20,9 +20,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from install import REPOSITORY, ConfigValue
-from paths import CUSTOM_REPOSITORY, extensions
-from tests.support import Connect, scalar
+from tests.support import connect, scalar
 
 TOKEN_HEADER = "X-Webui-Token"
 
@@ -81,13 +79,13 @@ def free_port() -> int:
 
 
 @pytest.fixture
-def ui(connect: Connect, tmp_path: Path) -> Iterator[Ui]:
+def ui(custom: Path, tmp_path: Path) -> Iterator[Ui]:
     """A database with the UI server running on a free port.
 
     One server runs per process, so the fixture stops it for the next test.
     """
-    con = connect()
-    con.execute(f"LOAD webui FROM {REPOSITORY}")
+    con = connect([custom], check_signatures=False)
+    con.execute("LOAD webui")
 
     state = tmp_path / "state"
     started = scalar(con, f"SELECT url FROM webui_start(port := {free_port()}, state := '{state}')")
@@ -96,10 +94,6 @@ def ui(connect: Connect, tmp_path: Path) -> Iterator[Ui]:
     yield Ui(con=con, url=url, token=token, state=state)
 
     con.execute("CALL webui_stop()")
-
-
-def test_repository_holds_webui() -> None:
-    assert "webui" in extensions(CUSTOM_REPOSITORY)
 
 
 def test_start_reports_where_to_open_the_ui(ui: Ui) -> None:
@@ -492,29 +486,29 @@ def test_stops_and_starts_again(ui: Ui) -> None:
         ui.con.execute("CALL webui_start(port := 70000)")
 
 
-def test_one_database_is_served_per_process(ui: Ui, connect: Connect) -> None:
-    other = connect()
-    other.execute(f"LOAD webui FROM {REPOSITORY}")
+def test_one_database_is_served_per_process(ui: Ui, custom: Path) -> None:
+    other = connect([custom], check_signatures=False)
+    other.execute("LOAD webui")
 
     with pytest.raises(duckdb.Error, match="serving another database"):
         other.execute(f"CALL webui_start(port := {free_port()})")
 
 
-def test_database_is_released_when_its_last_connection_closes(
-    installed: dict[str, ConfigValue], tmp_path: Path
-) -> None:
+def test_database_is_released_when_its_last_connection_closes(custom: Path, tmp_path: Path) -> None:
     """The extension's own connections must not keep a database open, or opening its file again would wait forever."""
     path = str(tmp_path / "file.duckdb")
 
-    con = duckdb.connect(path, config=installed)
+    con = connect([custom], check_signatures=False, database=path)
     con.execute("CREATE TABLE kept AS SELECT 42 AS answer")
-    con.execute(f"LOAD webui FROM {REPOSITORY}")
+    con.execute("LOAD webui")
     url = scalar(con, f"SELECT url FROM webui_start(port := {free_port()})")
     con.close()
 
     answers: list[object] = []
     reopen = threading.Thread(
-        target=lambda: answers.append(scalar(duckdb.connect(path, config=installed), "SELECT answer FROM kept")),
+        target=lambda: answers.append(
+            scalar(connect([custom], check_signatures=False, database=path), "SELECT answer FROM kept")
+        ),
         daemon=True,
     )
     reopen.start()

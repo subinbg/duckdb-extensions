@@ -1,31 +1,23 @@
-"""Fixtures: both repositories, installed once the way `scripts/install.py` installs them on a server."""
+"""Fixtures: the two extension directories that `scripts/build.py` filled.
 
-import duckdb
+A system that built somewhere other than `build/` names the directories in the environment.
+"""
+
+import os
+from pathlib import Path
+
 import pytest
 
-from install import ConfigValue, install, settings
-from paths import CORE_REPOSITORY, CUSTOM_REPOSITORY
-from tests.support import Connect
+ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(scope="session")
-def installed(tmp_path_factory: pytest.TempPathFactory) -> dict[str, ConfigValue]:
-    """The settings of a database that loads from the session's own extension directories."""
-    root = tmp_path_factory.mktemp("installed")
-    install(
-        core_repository=CORE_REPOSITORY,
-        core_directory=root / "core",
-        custom_repository=CUSTOM_REPOSITORY,
-        custom_directory=root / "custom",
-    )
-    return settings(root / "core", root / "custom")
+def core() -> Path:
+    """The directory given to `build.py --core`."""
+    return Path(os.environ.get("DUCKDB_CORE_EXTENSIONS", ROOT / "build/core")).resolve()
 
 
-@pytest.fixture
-def connect(installed: dict[str, ConfigValue]) -> Connect:
-    """Open a database that loads the installed extensions, as any later process on a server would."""
-
-    def _connect(**config: ConfigValue) -> duckdb.DuckDBPyConnection:
-        return duckdb.connect(config={**installed, **config})
-
-    return _connect
+@pytest.fixture(scope="session")
+def custom() -> Path:
+    """The directory given to `build.py --custom`."""
+    return Path(os.environ.get("DUCKDB_CUSTOM_EXTENSIONS", ROOT / "build/custom")).resolve()

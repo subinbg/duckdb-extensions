@@ -7,14 +7,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-build = [
-    "cryptography>=50.0.2",
-]
 test = [
     "pytest>=8.4.2",
 ]
 dev = [
-    { include-group = "build" },
     { include-group = "test" },
     "pyrefly>=1.4.1",
     "ruff>=0.17.4",
@@ -23,15 +19,8 @@ dev = [
 [tool.uv]
 package = false
 
-# What scripts/fetch_core.py mirrors from extensions.duckdb.org for the DuckDB version pinned above,
-# and the platforms whose binaries core-extensions.sha256 pins.
-[tool.duckdb-extensions]
-core = ["httpfs", "iceberg", "avro", "sqlite_scanner"]
-platforms = ["linux_amd64", "linux_arm64", "osx_arm64"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["scripts"]
 
 [tool.pyrefly]
 preset = "strict"
