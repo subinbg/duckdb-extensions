@@ -22,14 +22,12 @@ SIGNATURE_SIZE = 256
 
 
 def duckdb_platform() -> str:
-    """DuckDB's name for the machine this runs on, such as `linux_amd64` or `osx_arm64`."""
     system = {"Linux": "linux", "Darwin": "osx"}[platform.system()]
     machine = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}[platform.machine()]
     return f"{system}_{machine}"
 
 
-def fetch_core(names: list[str], directory: Path, url: str) -> None:
-    """Download the official extensions that `directory` does not hold yet."""
+def download_core_extensions(names: list[str], directory: Path, url: str) -> None:
     for name in names:
         if not NAME_PATTERN.match(name):
             raise ArgumentError(f"invalid extension name {name!r}")
@@ -46,9 +44,9 @@ def fetch_core(names: list[str], directory: Path, url: str) -> None:
         print(f"core    {target}")
 
 
-def compile_extensions() -> Iterator[tuple[Path, Path]]:
-    """Compile the workspace, and give the manifest and the library of each extension in it."""
-    cargo = ["cargo", "build", "--release", "--locked", "--message-format=json-render-diagnostics"]
+def compile_custom_extensions(names: list[str]) -> Iterator[tuple[Path, Path]]:
+    packages = [argument for name in names for argument in ("--package", name)]
+    cargo = ["cargo", "build", "--release", "--locked", "--message-format=json-render-diagnostics", *packages]
     messages = subprocess.run(cargo, cwd=ROOT, stdout=subprocess.PIPE, check=True).stdout
 
     for line in messages.splitlines():
@@ -66,15 +64,16 @@ def metadata_field(value: str) -> bytes:
     return raw.ljust(32, b"\x00")
 
 
-def build_custom(directory: Path, platform: str) -> None:
-    """Compile every crate under extensions/, and write each library as a DuckDB extension file.
+def build_custom_extensions(names: list[str], directory: Path, platform: str) -> None:
+    """Compile custom DuckDB extensions written in Rust, and convert each library as a DuckDB extension file.
 
-    A library becomes an extension file by DuckDB's footer: 8 x 32-byte metadata fields and a 256-byte signature.
-    The metadata names the platform, and the stable C API version the extension asks for (ABI C_STRUCT),
-    read from `capi-version` under [package.metadata.duckdb] in its manifest.
-    The signature is left empty, so DuckDB loads the file only with allow_unsigned_extensions.
+    To make a library as a valid DuckDB extension file, it requires a DuckDB footer:
+    8 x 32-byte metadata fields and a 256-byte signature.
+
+    The metadata contains the platform, and the stable C API version (ABI C_STRUCT).
+    This API version should match `capi-version` under `[package.metadata.duckdb]` in `Cargo.toml`.
     """
-    for manifest, library in compile_extensions():
+    for manifest, library in compile_custom_extensions(names):
         package = tomllib.loads(manifest.read_text())["package"]
         name, version = package["name"], package["version"]
         capi_version = package["metadata"]["duckdb"]["capi-version"]
@@ -82,7 +81,7 @@ def build_custom(directory: Path, platform: str) -> None:
         if not NAME_PATTERN.match(name):
             raise SystemExit(f"package name {name!r} is not a valid extension name ([a-z0-9_]+)")
 
-        # Stored last-to-first: DuckDB reverses the 8 fields when it parses them.
+        # DuckDB reverses the 8 fields when it parses them.
         fields = ["", "", "", "C_STRUCT", version, capi_version, platform, "4"]
         footer = b"".join(metadata_field(field) for field in fields) + b"\x00" * SIGNATURE_SIZE
 
@@ -106,34 +105,29 @@ def pack(tarball: Path, directories: dict[str, Path]) -> None:
 
 @command
 def build(
-    extensions: list[str],  # official extensions to download, such as httpfs
-    /,
-    *,
-    duckdb_version: str,  # the DuckDB release to build for, such as v2.0.0
-    core: Path,  # extension directory for the official extensions
-    custom: Path,  # extension directory for our extensions
-    dist: Path | None = None,  # also pack both into a release tarball in this directory
+    duckdb_version: str,
+    core_directory: Path,
+    custom_directory: Path,
+    core_extensions: list[str] | None = None,
+    custom_extensions: list[str] | None = None,
+    dist_directory: Path | None = None,
 ) -> None:
-    """Fill two DuckDB extension directories, for one DuckDB version and for the machine this runs on.
-
-    1. The official extensions named on the command line are downloaded from extensions.duckdb.org into <core>.
-    2. Every crate under extensions/ is compiled with cargo and written into <custom>.
-
-    Both are laid out as DuckDB reads an extension directory: <directory>/<version>/<platform>/<name>.duckdb_extension
-    A database opened with `extension_directories` set to them loads what they hold.
-    """
 
     platform = duckdb_platform()
-    files = Path(duckdb_version) / platform
-    (core / files).mkdir(parents=True, exist_ok=True)
-    (custom / files).mkdir(parents=True, exist_ok=True)
+    core = core_directory / duckdb_version / platform
+    custom = custom_directory / duckdb_version / platform
+    core.mkdir(parents=True, exist_ok=True)
+    custom.mkdir(parents=True, exist_ok=True)
 
-    fetch_core(extensions, core / files, f"{BASE_URL}/{duckdb_version}/{platform}")
-    build_custom(custom / files, platform)
+    if core_extensions:
+        download_core_extensions(core_extensions, core, f"{BASE_URL}/{duckdb_version}/{platform}")
 
-    if dist:
-        tarball = dist / f"duckdb-extensions-{duckdb_version}-{platform}.tar.gz"
-        pack(tarball, {str("core" / files): core / files, str("custom" / files): custom / files})
+    if custom_extensions:
+        build_custom_extensions(custom_extensions, custom, platform)
+
+    if dist_directory:
+        tarball = dist_directory / f"duckdb-extensions-{duckdb_version}-{platform}.tar.gz"
+        pack(tarball, {f"core/{duckdb_version}/{platform}": core, f"custom/{duckdb_version}/{platform}": custom})
 
 
 if __name__ == "__main__":

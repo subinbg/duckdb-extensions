@@ -1,6 +1,6 @@
 """Fixtures: the two extension directories that `scripts/build.py` filled.
 
-A system that built somewhere other than `build/` names the directories in the environment.
+The tests are told where they are, as `make test` does from build.env.
 """
 
 import os
@@ -8,16 +8,25 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+_ENV_CORE_EXTENSION_DIR = "CORE_DIRECTORY"
+_ENV_CUSTOM_EXTENSION_DIR = "CUSTOM_DIRECTORY"
+
+
+def pytest_configure() -> None:
+    missing = [
+        variable for variable in (_ENV_CORE_EXTENSION_DIR, _ENV_CUSTOM_EXTENSION_DIR) if variable not in os.environ
+    ]
+    if missing:
+        raise pytest.UsageError(f"set {' and '.join(missing)} to the directories given to scripts/build.py")
 
 
 @pytest.fixture(scope="session")
 def core() -> Path:
-    """The directory given to `build.py --core`."""
-    return Path(os.environ.get("DUCKDB_CORE_EXTENSIONS", ROOT / "build/core")).resolve()
+    """The directory given to `build.py --core-directory`."""
+    return Path(os.environ[_ENV_CORE_EXTENSION_DIR]).resolve()
 
 
 @pytest.fixture(scope="session")
 def custom() -> Path:
-    """The directory given to `build.py --custom`."""
-    return Path(os.environ.get("DUCKDB_CUSTOM_EXTENSIONS", ROOT / "build/custom")).resolve()
+    """The directory given to `build.py --custom-directory`."""
+    return Path(os.environ[_ENV_CUSTOM_EXTENSION_DIR]).resolve()

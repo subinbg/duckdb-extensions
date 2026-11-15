@@ -1,5 +1,5 @@
-# The GitHub Actions system: runners that come with cargo, and get uv.
-# What they build and test is not decided here: every `run` below is a command of README.md "Build and test".
+# The GitHub Actions system: runners that come with cargo and make, and get uv.
+# What they build and test is not decided here: the commands are those of the Makefile, with the arguments of build.env.
 
 name: test
 on: push
@@ -13,9 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10
+      - run: uv sync --locked
 
       - run: cargo test --locked
-      - run: >
-          uv run scripts/build.py --duckdb-version v2.0.0 --core build/core --custom build/custom
-          httpfs iceberg avro sqlite_scanner
-      - run: uv run --locked pytest
+      - run: make build
+      - run: make test
