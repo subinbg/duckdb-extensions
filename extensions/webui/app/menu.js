@@ -21,15 +21,17 @@ export const OPERATORS = {
 
 const layer = document.getElementById("menu");
 
-/** Open a menu with `items` just below the element that was clicked. */
-export function openMenu(event, items) {
+/** Open a menu with `items` just below the element that was clicked, and return it. */
+export function openMenu(event, items, className = "popover") {
   const place = event.target.getBoundingClientRect();
-  const left = Math.max(8, Math.min(place.left, innerWidth - 280));
-  const popover = h("div", { className: "popover", style: `left: ${left}px; top: ${place.bottom + 4}px` }, items);
+  const style = `top: ${place.bottom + 4}px; max-height: calc(100vh - ${place.bottom + 16}px)`;
+  const popover = h("div", { className, style }, items);
 
   // A click anywhere else lands on the backdrop, which closes the menu.
   fill(layer, h("div", { className: "backdrop", onclick: closeMenu }), popover);
+  popover.style.left = `${Math.max(8, Math.min(place.left, innerWidth - popover.offsetWidth - 8))}px`;
   popover.querySelector("input")?.focus();
+  return popover;
 }
 
 export const closeMenu = () => fill(layer);

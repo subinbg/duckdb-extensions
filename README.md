@@ -110,16 +110,19 @@ It replaces DuckDB's `ui` extension, which is left out of the bundle: that exten
 
 | | DuckDB `ui` | `webui` |
 |---|---|---|
-| Browser application | Downloaded on every page load, about 10 MB | Included in the extension, 65 KB; the page loads nothing from another host |
+| Browser application | Downloaded on every page load, about 10 MB | Included in the extension, 80 KB; the page loads nothing from another host |
 | Rows of a result | The first 50,000 | All of them: the grid loads rows as it scrolls, and the result is cached in DuckDB, which moves it to disk when memory runs short |
 | Sort and filter | In SQL only | From the column headers, computed by DuckDB over every row |
 | Row count and column summary | Computed after every run, on the notebook's connection | Count in the background on another connection, the `SUMMARIZE` of a column on request; neither delays the next cell |
 | A long text value | The first 10,000 characters, unless switched to raw view | Whole |
 | A nested value | Tree; a `UNION` shows as empty | Tree for structs, lists, maps, unions and JSON |
 | Export | The first 50,000 rows | Every row, as CSV, Parquet or JSON |
+| Reading a source | Written by hand | **+ Add a source** asks for the fields of a template and adds a cell with its SQL: DuckDB, SQLite and PostgreSQL databases, BigQuery tables, queries and catalogs, and Parquet, CSV, JSON, Avro and Iceberg files |
 | Access control | None: any local process can run SQL | A random token, part of the URL, required by every request |
 | Databases attached to your session | Three, for its own use | None |
 | Size of the extension | 56 MB | 1.0 MB |
+
+The templates keep nothing: no connection and no secret is saved, and the cells they add hold no password. A PostgreSQL password comes from the `~/.pgpass` file or the `PGPASSWORD` variable of the DuckDB process, BigQuery signs in as `bigquery` describes, and a file template for an `s3://` path loads `aws` first, which signs in as [Cloud storage](#cloud-storage) describes. GCS takes a token, which the process that starts the UI gives in a secret, so that no cell holds it.
 
 ### Options
 
@@ -140,7 +143,7 @@ It replaces DuckDB's `ui` extension, which is left out of the bundle: that exten
 | Server | `src/server.rs` | Serves the application's files, and answers the requests it posts to `/api` |
 | Protocol | `src/protocol.rs` | One `Request` enum, and the type of the answer to each of its variants |
 | Engine | `src/engine/`, `src/duck.rs` | Runs SQL and holds results, through wrappers over DuckDB's C API |
-| Application | `app/` | The page: `index.html`, `style.css`, and JavaScript modules for the catalog tree, cells, editor, grid and inspector |
+| Application | `app/` | The page: `index.html`, `style.css`, and JavaScript modules for the catalog tree, cells, editor, grid, inspector and source templates |
 
 What reaches the server is one file, `webui.duckdb_extension`:
 

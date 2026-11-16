@@ -78,7 +78,7 @@ export function identifier(name) {
 
 const draw = () => fill(tree, catalog.databases.map(drawDatabase));
 const span = (className, text) => h("span", { className }, text);
-const twist = (open) => span("twist", open ? "▾" : "▸");
+const twist = (open) => span(open ? "twist expanded" : "twist");
 
 function drawDatabase({ name, kind, path, read_only: readOnly }) {
   const open = expanded.has(key(name));

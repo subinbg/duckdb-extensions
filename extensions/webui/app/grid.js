@@ -56,11 +56,11 @@ function windowAt(rows, scrollTop) {
   return { start, end, top, height };
 }
 
-/** Give every column a width that suits its name and the values of the first rows. */
+/** Give every column a width that suits its name, its type and the values of the first rows. */
 function fitWidths(columns, sample) {
-  return columns.map(({ name }, index) => {
+  return columns.map(({ name, data_type: dataType }, index) => {
     const longest = Math.max(0, ...sample.slice(0, 60).map((row) => Math.min(row[index]?.length ?? 0, 48)));
-    return clamp(Math.max(longest * 7.4 + 22, name.length * 7.8 + 46), 72, 420);
+    return clamp(Math.max(longest * 7.9 + 22, name.length * 8.6 + 46, dataType.length * 7.6 + 38), 72, 440);
   });
 }
 

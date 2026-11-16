@@ -23,7 +23,8 @@ const CATALOG: &str = "
 
 const RELATIONS: &str = "
     WITH relations AS (
-        SELECT schema_name, table_name AS name, false AS is_view, estimated_size AS estimated_rows
+        -- PostgreSQL and other attached databases report 0 when they have no estimate, which is no row count.
+        SELECT schema_name, table_name AS name, false AS is_view, nullif(estimated_size, 0) AS estimated_rows
         FROM duckdb_tables()
         WHERE database_name = $1 AND NOT internal
         UNION ALL

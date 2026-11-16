@@ -7,12 +7,14 @@
 // | `grid`      | The rows of a result, of which only those in view exist in the page. |
 // | `menu`      | The menu of a column or of the export button.                        |
 // | `inspector` | The panel that shows one whole value, or the summary of one column.  |
+// | `templates` | The SQL that reads a source, made from the fields the user fills in. |
 //
 // `api` sends every request to the extension, `dom` makes elements, `format` spells numbers, and `sql` reads SQL.
 
 import { ask, token } from "./api.js";
 import * as catalog from "./catalog.js";
 import { Cell } from "./cell.js";
+import * as templates from "./templates.js";
 
 const FIRST_CELL = "-- Run with Ctrl+Enter or ⌘+Enter. Only the last statement's rows are shown.\nSHOW ALL TABLES;";
 /** The notebook is saved this long after the last change to it. */
@@ -47,12 +49,14 @@ async function start() {
   new MutationObserver(scheduleSave).observe(cells, { childList: true });
   document.getElementById("add").onclick = () => addCell("").focus();
 
-  // A table or view of the catalog opens in a new cell, which runs at once.
-  catalog.start((sql) => {
+  // A table or view of the catalog opens in a new cell, which runs at once; a template's cell runs if asked to.
+  const open = (sql, run = true) => {
     const cell = addCell(sql);
     cell.focus();
-    cell.run();
-  });
+    if (run) cell.run();
+  };
+  catalog.start(open);
+  templates.start(document.getElementById("add-source"), open);
   setInterval(() => document.hidden || catalog.refresh(false), CATALOG_INTERVAL_MS);
 }
 

@@ -1,42 +1,51 @@
 /* The whole look of the application. Fonts are the system's, so nothing is fetched from elsewhere. */
 
 :root {
-  --bg: #f6f5f2;
+  --bg: #eef1f5;
   --panel: #ffffff;
-  --head: #f1efea;
-  --line: #dcd8cf;
-  --line-soft: #ebe8e1;
-  --text: #1f1e1b;
-  --dim: #7a766c;
-  --accent: #2f5bd0;
-  --accent-soft: #e4ebfb;
-  --error: #b3261e;
-  --error-soft: #fbeceb;
-  --keyword: #7a3fb8;
-  --string: #2b7a3d;
-  --number: #b25a12;
-  --comment: #8a8578;
+  --head: #e8ecf2;
+  --line: #a9b2c0;
+  --line-soft: #ccd3dd;
+  --text: #0b1220;
+  --dim: #3f4a5c;
+  --accent: #1f5bff;
+  --accent-soft: #dce6ff;
+  --error: #c4122f;
+  --error-soft: #ffe6ea;
+  --keyword: #8a1fd1;
+  --string: #0f7a34;
+  --number: #c24400;
+  --comment: #5b6779;
+  /* What the catalog's badges stand for. */
+  --database: #1f5bff;
+  --schema: #d97706;
+  --table: #0f9d58;
+  --view: #8a1fd1;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #171614;
-    --panel: #1f1e1b;
-    --head: #262522;
-    --line: #3a3833;
-    --line-soft: #2c2b27;
-    --text: #ece9e2;
-    --dim: #9a958a;
-    --accent: #8fb0ff;
-    --accent-soft: #26324d;
-    --error: #ff8a80;
-    --error-soft: #3a2220;
-    --keyword: #c9a2f2;
-    --string: #8fd19e;
-    --number: #f0b27a;
-    --comment: #8a8578;
+    --bg: #0a0e15;
+    --panel: #121824;
+    --head: #1b2333;
+    --line: #4a566b;
+    --line-soft: #2c3648;
+    --text: #f6f8fc;
+    --dim: #b4bfd0;
+    --accent: #6c9bff;
+    --accent-soft: #1f3566;
+    --error: #ff6b81;
+    --error-soft: #47141e;
+    --keyword: #d59bff;
+    --string: #6ee79a;
+    --number: #ffb066;
+    --comment: #93a1b6;
+    --database: #3d7bff;
+    --schema: #f59e0b;
+    --table: #22b46a;
+    --view: #a855f7;
   }
 }
 
@@ -57,7 +66,7 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.45 var(--sans);
+  font: 14px/1.45 var(--sans);
 }
 
 #app {
@@ -88,7 +97,7 @@ code {
 
 .dim {
   color: var(--dim);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .null {
@@ -100,6 +109,7 @@ code {
 
 .btn {
   font: inherit;
+  font-weight: 600;
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
@@ -111,12 +121,18 @@ code {
 
 .btn:hover {
   border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .btn.ghost {
   background: transparent;
   border-color: transparent;
-  color: var(--dim);
+  color: var(--text);
 }
 
 .btn.ghost:hover {
@@ -128,6 +144,11 @@ code {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+.btn.run:hover:not(:disabled) {
+  color: #fff;
+  filter: brightness(1.12);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -154,10 +175,15 @@ code {
 
 .btn.add {
   width: 100%;
-  padding: 8px;
-  border-style: dashed;
-  color: var(--dim);
+  padding: 9px;
+  border: 1.5px dashed var(--accent);
+  color: var(--accent);
   background: transparent;
+}
+
+.btn.add-source {
+  margin: 10px 12px 4px;
+  padding: 7px 10px;
 }
 
 /* Sidebar: the catalog tree */
@@ -178,8 +204,23 @@ code {
   border-bottom: 1px solid var(--line);
 }
 
-#sidebar header .btn {
+#reload {
+  display: grid;
+  place-items: center;
   margin-left: auto;
+  width: 34px;
+  height: 30px;
+  padding: 0;
+}
+
+#reload svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .logo {
@@ -218,15 +259,15 @@ code {
 }
 
 .node.level-1 {
-  padding-left: 26px;
+  padding-left: 34px;
 }
 
 .node.level-2 {
-  padding-left: 30px;
+  padding-left: 34px;
 }
 
 .node.level-3 {
-  padding-left: 66px;
+  padding-left: 84px;
 }
 
 .node .label {
@@ -238,36 +279,79 @@ code {
 
 .node.column .label {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
 }
 
+/* A triangle that points right, and down when its node is expanded. */
 .twist {
-  width: 10px;
-  color: var(--dim);
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
   flex: none;
+  border-radius: 4px;
 }
 
-.icon {
-  width: 14px;
+.twist::before {
+  content: "";
+  border-style: solid;
+  border-width: 6px 0 6px 9px;
+  border-color: transparent transparent transparent var(--text);
+}
+
+.twist.expanded::before {
+  border-width: 9px 6px 0;
+  border-color: var(--text) transparent transparent;
+}
+
+.node:hover .twist {
+  background: var(--line-soft);
+}
+
+.icon,
+.badge {
+  display: inline-grid;
+  place-items: center;
   flex: none;
-  color: var(--dim);
-  text-align: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #fff;
+  font: 700 10px/1 var(--sans);
+  letter-spacing: 0.02em;
+}
+
+.icon.database {
+  background: var(--database);
 }
 
 .icon.database::before {
-  content: "◉";
+  content: "DB";
+}
+
+.icon.schema {
+  background: var(--schema);
 }
 
 .icon.schema::before {
-  content: "▤";
+  content: "S";
+}
+
+.icon.table {
+  background: var(--table);
 }
 
 .icon.table::before {
-  content: "▦";
+  content: "T";
+}
+
+.icon.view {
+  background: var(--view);
 }
 
 .icon.view::before {
-  content: "◫";
+  content: "V";
 }
 
 .node .open {
@@ -277,7 +361,7 @@ code {
   color: var(--accent);
   cursor: pointer;
   padding: 0 2px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .node:hover .open {
@@ -301,6 +385,7 @@ code {
 
 .cell:focus-within {
   border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .cell-bar {
@@ -309,11 +394,12 @@ code {
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line);
 }
 
 .cell-bar .status {
   color: var(--dim);
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -328,7 +414,7 @@ code {
   left: 0;
   right: 0;
   bottom: -1px;
-  height: 2px;
+  height: 3px;
   overflow: hidden;
 }
 
@@ -357,7 +443,7 @@ code {
 
 .editor {
   display: grid;
-  font: 13px/1.55 var(--mono);
+  font: 14px/1.55 var(--mono);
 }
 
 .editor > * {
@@ -408,7 +494,7 @@ code {
 }
 
 .hl .other {
-  color: var(--dim);
+  color: var(--text);
 }
 
 /* The completions hang below the word they are for, from an empty mark placed just before it. */
@@ -423,7 +509,7 @@ code {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
 }
 
 .completion {
@@ -432,7 +518,7 @@ code {
   top: 1.55em;
   min-width: 180px;
   padding: 4px;
-  font: 12.5px var(--mono);
+  font: 13px var(--mono);
   white-space: nowrap;
   pointer-events: auto;
 }
@@ -459,6 +545,7 @@ code {
 .popover {
   position: fixed;
   width: 264px;
+  overflow: auto;
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -481,8 +568,8 @@ code {
 }
 
 .menu-title {
-  padding: 4px 8px 6px;
-  font-weight: 600;
+  padding: 6px 8px;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -520,7 +607,7 @@ code {
   padding: 10px 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font: 12.5px/1.5 var(--mono);
+  font: 13px/1.5 var(--mono);
   color: var(--error);
   background: var(--error-soft);
   border-top: 1px solid var(--line-soft);
@@ -528,7 +615,7 @@ code {
 
 .note {
   padding: 8px 12px;
-  color: var(--dim);
+  color: var(--text);
   border-top: 1px solid var(--line-soft);
 }
 
@@ -587,7 +674,7 @@ code {
   z-index: 3;
   height: 40px;
   background: var(--head);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
 }
 
 .hc {
@@ -621,7 +708,7 @@ code {
 }
 
 .ht {
-  font-size: 10.5px;
+  font-size: 11.5px;
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
@@ -664,7 +751,7 @@ code {
   z-index: 2;
   padding: 0 8px;
   text-align: right;
-  font: 11.5px/24px var(--mono);
+  font: 12px/24px var(--mono);
   color: var(--dim);
   background: var(--head);
   border-right: 1px solid var(--line);
@@ -698,7 +785,7 @@ code {
 .gc {
   height: 24px;
   padding: 0 8px;
-  font: 12.5px/23px var(--mono);
+  font: 13px/23px var(--mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -776,7 +863,7 @@ code {
 
 .notice {
   color: var(--dim);
-  font-size: 12px;
+  font-size: 13px;
   margin: 6px 0;
 }
 
@@ -785,12 +872,12 @@ code {
   padding: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font: 12.5px/1.55 var(--mono);
+  font: 13px/1.55 var(--mono);
 }
 
 .tree-value {
   padding: 10px 12px 16px 4px;
-  font: 12.5px/1.6 var(--mono);
+  font: 13px/1.6 var(--mono);
 }
 
 .tree-value details {
@@ -847,7 +934,7 @@ code {
 
 .facts td {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 13px;
   overflow-wrap: anywhere;
   padding: 3px 6px 3px 0;
 }
@@ -877,7 +964,7 @@ code {
 
 .top-value {
   position: relative;
-  font: 12.5px var(--mono);
+  font: 13px var(--mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -886,4 +973,155 @@ code {
 .top-row .dim {
   position: relative;
   white-space: nowrap;
+}
+
+/* Sources: the list of templates, and the form that fills one in */
+
+.popover.sources {
+  width: 400px;
+}
+
+.popover > .source {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  column-gap: 10px;
+  padding: 6px 8px;
+}
+
+.source small {
+  grid-column: 2;
+  color: var(--dim);
+  font-size: 12.5px;
+}
+
+.badge {
+  min-width: 30px;
+  height: 22px;
+  font-size: 11px;
+  background: var(--accent);
+}
+
+.badge.duckdb {
+  background: #f5c400;
+  color: #111;
+}
+
+.badge.sqlite {
+  background: #0b6fb8;
+}
+
+.badge.postgres {
+  background: #336791;
+}
+
+.badge.bigquery {
+  background: #1a73e8;
+}
+
+.badge.parquet {
+  background: #4c3fe0;
+}
+
+.badge.csv {
+  background: #0f9d58;
+}
+
+.badge.json {
+  background: #b7791f;
+}
+
+.badge.avro {
+  background: #d1336b;
+}
+
+.badge.iceberg {
+  background: #0891b2;
+}
+
+.source-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: 15px;
+}
+
+.source-head .btn {
+  padding: 0 8px;
+  font-size: 18px;
+}
+
+.popover .field {
+  display: grid;
+  gap: 3px;
+  padding: 6px 8px;
+  font-weight: 600;
+}
+
+.popover .field input,
+.popover .field textarea {
+  font: 13px var(--mono);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.popover .field ::placeholder {
+  color: var(--dim);
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.popover .field input:focus,
+.popover .field textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.popover .field small,
+.popover .hint {
+  color: var(--dim);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.popover .hint {
+  padding: 4px 8px;
+}
+
+.required {
+  color: var(--error);
+}
+
+.popover .flag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-weight: 600;
+}
+
+.preview {
+  margin: 0 8px;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.5 var(--mono);
+  background: var(--head);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.source-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 8px 4px;
 }

@@ -25,7 +25,7 @@ use crate::protocol::{ErrorBody, ExportFormat, Notebook, Request};
 macro_rules! assets {
     ($($name:literal),*) => { [$(($name, include_bytes!(concat!("../app/", $name)).as_slice())),*] };
 }
-static ASSETS: [(&str, &[u8]); 14] = assets![
+static ASSETS: [(&str, &[u8]); 15] = assets![
     "index.html",
     "style.css",
     "favicon.svg",
@@ -39,7 +39,8 @@ static ASSETS: [(&str, &[u8]); 14] = assets![
     "grid.js",
     "inspector.js",
     "menu.js",
-    "sql.js"
+    "sql.js",
+    "templates.js"
 ];
 
 /// The header that carries the access token on every request.
