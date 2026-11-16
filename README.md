@@ -2,7 +2,7 @@
 
 Builds an offline extension bundle for the DuckDB Python client, for machines that cannot reach `extensions.duckdb.org`. A bundle is one tarball (meant to be a GitHub Release asset) with:
 
-1. DuckDB's official core extensions `httpfs`, `iceberg`, `avro` (needed by iceberg) and `sqlite_scanner`, byte for byte as DuckDB publishes them.
+1. DuckDB's official core extensions `httpfs`, `aws`, `iceberg`, `avro` (needed by iceberg), `sqlite_scanner` and `postgres_scanner`, byte for byte as DuckDB publishes them.
 2. Our own extensions, written in Rust against DuckDB's stable C API: `hello`, a template, `webui`, a browser UI that needs no network access, and `bigquery`, which reads Google BigQuery.
 
 ## Build and test
@@ -75,6 +75,16 @@ con.execute("SELECT hello('duck')").fetchall()  # [('Hello, duck!',)]
 ```
 
 The client must be exactly the version the directories were built for (`pip install duckdb==2.0.0`). Extensions are loaded into an open database, so each newly opened database loads them again.
+
+### Cloud storage
+
+`httpfs` reads and writes S3 and Google Cloud Storage, and `iceberg` reads Iceberg tables stored there. Each signs in without a key written anywhere:
+
+| | Amazon S3 | Google Cloud Storage |
+|---|---|---|
+| Sign in | `LOAD aws`, or `CREATE SECRET (TYPE s3, PROVIDER credential_chain)`: AWS's credential chain, which reads `aws configure`, SSO and the environment | `CREATE SECRET (TYPE gcs, BEARER_TOKEN '...')`, with the token `gcloud auth application-default print-access-token` prints; it expires within the hour. DuckDB's `credential_chain` for GCS is AWS's, which GCS refuses |
+| Files | `read_parquet`, `read_csv`, `glob` and `COPY ... TO` on `s3://` paths | The same on `gs://` paths |
+| Iceberg | `iceberg_scan` of a table's metadata `.json` file. A table's folder needs a `version-hint.text`, which PyIceberg does not write, or `SET unsafe_enable_version_guessing = true` | The same |
 
 ### Signature checks
 

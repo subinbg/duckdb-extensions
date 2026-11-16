@@ -52,6 +52,14 @@ def test_sqlite_autoloads_on_attach(core: Path, tmp_path: Path) -> None:
     assert "sqlite_scanner" in loaded_extensions(con)
 
 
+def test_postgres_autoloads_on_attach(core: Path) -> None:
+    """No server listens on port 1, so the attach fails, but only once the extension has tried to connect."""
+    con = connect([core])
+    with pytest.raises(duckdb.Error, match=r"(?i)connect"):
+        con.execute("ATTACH 'host=127.0.0.1 port=1 dbname=shop user=shop' AS pg (TYPE postgres, READ_ONLY)")
+    assert "postgres_scanner" in loaded_extensions(con)
+
+
 def test_iceberg_loads_with_its_avro_dependency(core: Path) -> None:
     con = connect([core])
     con.execute("LOAD iceberg")
