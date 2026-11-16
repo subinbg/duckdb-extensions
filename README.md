@@ -3,7 +3,7 @@
 Builds an offline extension bundle for the DuckDB Python client, for machines that cannot reach `extensions.duckdb.org`. A bundle is one tarball (meant to be a GitHub Release asset) with:
 
 1. DuckDB's official core extensions `httpfs`, `iceberg`, `avro` (needed by iceberg) and `sqlite_scanner`, byte for byte as DuckDB publishes them.
-2. Our own extensions, written in Rust against DuckDB's stable C API: `hello`, a template, and `webui`, a browser UI that needs no network access.
+2. Our own extensions, written in Rust against DuckDB's stable C API: `hello`, a template, `webui`, a browser UI that needs no network access, and `bigquery`, which reads Google BigQuery.
 
 ## Build and test
 
@@ -159,6 +159,52 @@ The engine runs SQL on four connections of its own:
 
 `tests/test_webui_extension.py` sends the application's requests, under `make docker-test` with `--network none`. The browser application itself is not run by the tests.
 
+## BigQuery (`bigquery`)
+
+`bigquery` reads Google BigQuery through Google's own Rust SDK (`google-cloud-bigquery`): it lists datasets and tables, reads tables, and runs queries, over views as well.
+
+```sql
+LOAD bigquery;
+FROM bigquery_datasets('my-project');                    -- dataset, location
+FROM bigquery_tables('my-project.my_dataset');           -- table, type (TABLE, VIEW, MATERIALIZED_VIEW, ...), created
+FROM bigquery_scan('my-project.my_dataset.my_table');    -- the rows of a table
+FROM bigquery_query('my-project', 'SELECT * FROM my_dataset.my_view WHERE ...');  -- GoogleSQL, run by BigQuery
+```
+
+| Function | Reads with | Detail |
+|---|---|---|
+| `bigquery_datasets(project)` | The BigQuery API | No cost |
+| `bigquery_tables('project.dataset')` | The BigQuery API | No cost |
+| `bigquery_scan('project.dataset.table', filter := ..., billing_project := ...)` | The Storage Read API, as Arrow | Only the columns DuckDB needs are read, by up to one stream per core. `filter` is a row restriction in GoogleSQL, such as `'year > 2020'`, applied by BigQuery. `billing_project` pays for the read, by default the table's project; set it to read another's tables, such as `bigquery-public-data`. Logical views cannot be read this way |
+| `bigquery_query(project, sql)` | A query job, then its result through the Storage Read API | Only a `SELECT` is run: a dry run first tells the statement's type. The rows keep BigQuery's order. `project` runs the job and pays for it |
+
+`DESCRIBE FROM bigquery_scan(...)` gives the columns of a table without reading its rows, and `INFORMATION_SCHEMA` those of views and more, as in `bigquery_query('my-project', 'SELECT * FROM my_dataset.INFORMATION_SCHEMA.COLUMNS')`. BigQuery's types become DuckDB's: `BIGNUMERIC`, whose 76 digits do not fit DuckDB's `DECIMAL`, and `GEOGRAPHY` (WKT) and `JSON` become `VARCHAR`; `RANGE` becomes a struct of `start` and `end`.
+
+### Credentials
+
+The extension holds no secret: it signs its calls with Google's [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials), as Google's own libraries and tools do. On a workstation, sign in once with the Google Cloud CLI:
+
+```bash
+gcloud auth application-default login
+```
+
+The CLI writes a refresh token to `~/.config/gcloud/application_default_credentials.json`, readable only by you; the extension exchanges it for access tokens that expire within the hour. `gcloud auth application-default revoke` signs out. Elsewhere the same code finds, in order, the file named by `GOOGLE_APPLICATION_CREDENTIALS` (such as a Workload Identity Federation configuration), and the service account of a Google Cloud machine. Prefer those to a downloaded service account key, which does not expire.
+
+To make Google itself refuse every write, read with an identity that may only read: create a service account with the roles BigQuery Data Viewer, BigQuery Job User and BigQuery Read Session User, and sign in as it with `gcloud auth application-default login --impersonate-service-account=<its email>`, which needs the role Service Account Token Creator on it.
+
+Without credentials, the first call waits about a minute for the metadata server of a Google Cloud machine before it fails, with the advice to sign in.
+
+### Limits
+
+| Limit | Detail |
+|---|---|
+| Reading only | Nothing writes to BigQuery: no `ATTACH`, `INSERT` or `COPY`, which DuckDB's stable C API does not let an extension provide. |
+| Filters | DuckDB's `WHERE` is applied by DuckDB after the columns arrive; `filter` is what BigQuery applies. |
+| Query results | `bigquery_query` waits for the job to finish before DuckDB gets its first row, and reads its result with one stream to keep its order. |
+| Size | The extension is 18 MB: the SDK, gRPC, TLS and Arrow are compiled into it. |
+
+`tests/test_bigquery_extension.py` checks what needs no network everywhere. With `BIGQUERY_BILLING_PROJECT` set to a project that pays for the reads, a few megabytes of Google's public datasets per run, it also tests against BigQuery: `BIGQUERY_BILLING_PROJECT=my-project make test`.
+
 ## Repository layout
 
 | Path | Purpose |
@@ -192,7 +238,7 @@ make check                # all three as checks, and that uv.lock is current
 3. Add the name to `CUSTOM_EXTENSIONS` in `build.env`, and run `cargo build`, which adds the crate to `Cargo.lock`.
 4. Build and test as above, and add tests for it under `tests/`.
 
-Both extensions are built on DuckDB's stable C API (ABI `C_STRUCT`), at version 1.5.6, and load in every DuckDB release that provides it. `hello` uses the safe wrappers of the `duckdb` crate. `webui` calls the C API itself through `libduckdb-sys`, for the connections it opens of its own. Each crate names the API version twice: where its entry point asks DuckDB for it, and as `capi-version` in its `Cargo.toml`, which `scripts/build.py` writes into the extension file.
+The extensions are built on DuckDB's stable C API (ABI `C_STRUCT`), at version 1.5.6, and load in every DuckDB release that provides it. `hello` and `bigquery` use the safe wrappers of the `duckdb` crate. `webui` calls the C API itself through `libduckdb-sys`, for the connections it opens of its own. Each crate names the API version twice: where its entry point asks DuckDB for it, and as `capi-version` in its `Cargo.toml`, which `scripts/build.py` writes into the extension file.
 
 ## Upgrading DuckDB
 
