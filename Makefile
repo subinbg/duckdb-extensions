@@ -2,7 +2,7 @@ include build.env
 
 PYTHON ?= uv run
 
-BUILD := $(PYTHON) scripts/build.py --duckdb-version $(DUCKDB_VERSION) \
+BUILD = $(PYTHON) scripts/build.py --duckdb-version $(DUCKDB_VERSION) \
   --core-directory $(CORE_DIRECTORY) --custom-directory $(CUSTOM_DIRECTORY) \
   $(CORE_EXTENSIONS:%=--core-extensions %) $(CUSTOM_EXTENSIONS:%=--custom-extensions %)
 
@@ -20,8 +20,8 @@ TEST_IMAGE := duckdb-extensions-test:$(ARCH)
 help:
 	@echo "make versions     check that the versions named across the repository fit build.env"
 	@echo "make build        download the official extensions and compile ours, as build.env says"
-	@echo "make dist         the same, and write the release tarball"
-	@echo "make test         run pytest on what was built"
+	@echo "make dist         compile ours, and write the release tarball of them"
+	@echo "make test         run pytest on what was built, and on the release tarball if there is one"
 	@echo "make docker-test  build in containers and run the tests offline (--network none)"
 	@echo "make docker-dist  build in containers and write the release tarball"
 	@echo "make check        ruff lint + format check, pyrefly strict type check"
@@ -41,11 +41,13 @@ versions-%:
 build: versions
 	$(BUILD)
 
+# The release tarball holds our extensions only, so DuckDB's are not downloaded for it.
+dist: CORE_EXTENSIONS =
 dist: versions
 	$(BUILD) --dist-directory $(DIST_DIRECTORY)
 
 test:
-	CORE_DIRECTORY=$(CORE_DIRECTORY) CUSTOM_DIRECTORY=$(CUSTOM_DIRECTORY) uv run pytest
+	CORE_DIRECTORY=$(CORE_DIRECTORY) CUSTOM_DIRECTORY=$(CUSTOM_DIRECTORY) DIST_DIRECTORY=$(DIST_DIRECTORY) uv run pytest
 
 docker-test:
 	$(DOCKER_BUILD) --target test -t $(TEST_IMAGE) .

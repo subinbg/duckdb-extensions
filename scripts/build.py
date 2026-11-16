@@ -101,13 +101,16 @@ def build_custom_extensions(names: list[str], directory: Path, platform: str) ->
         print(f"custom  {target} ({name} {version}, C API {capi_version})")
 
 
-def pack(tarball: Path, directories: dict[str, Path]) -> None:
-    """Pack extension directories into a release tarball, with its SHA-256 beside it."""
+def pack(tarball: Path, files: list[Path], directory: str) -> None:
+    """Pack extension files into a release tarball under `directory`, with its SHA-256 beside it.
+
+    `directory` is `<version>/<platform>`, so the unpacked tarball is an extension directory itself.
+    """
     tarball.parent.mkdir(parents=True, exist_ok=True)
 
     with tarfile.open(tarball, "w:gz") as tar:
-        for name, directory in directories.items():
-            tar.add(directory, name)
+        for file in files:
+            tar.add(file, f"{directory}/{file.name}")
 
     digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
     tarball.with_name(f"{tarball.name}.sha256").write_text(f"{digest}  {tarball.name}\n")
@@ -137,8 +140,10 @@ def build(
         build_custom_extensions(custom_extensions, custom, platform)
 
     if dist_directory:
+        # The release holds ours only: DuckDB installs its own extensions from extensions.duckdb.org.
         tarball = dist_directory / f"duckdb-extensions-{duckdb_version}-{platform}.tar.gz"
-        pack(tarball, {f"core/{duckdb_version}/{platform}": core, f"custom/{duckdb_version}/{platform}": custom})
+        built = [custom / f"{name}{SUFFIX}" for name in custom_extensions or []]
+        pack(tarball, built, f"{duckdb_version}/{platform}")
 
 
 if __name__ == "__main__":

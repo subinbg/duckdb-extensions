@@ -33,11 +33,16 @@ def scalar(con: duckdb.DuckDBPyConnection, query: str) -> object:
     return row[0]
 
 
+def target() -> tuple[str, str]:
+    """The DuckDB version and platform of the installed client, such as `("v2.0.0", "osx_arm64")`."""
+    con = duckdb.connect()
+    return str(scalar(con, "PRAGMA version")), str(scalar(con, "PRAGMA platform"))
+
+
 def files(directory: Path) -> dict[str, Path]:
     """The extension files that `directory` holds for the installed DuckDB client, by extension name."""
-    con = duckdb.connect()
-    version, platform = scalar(con, "PRAGMA version"), scalar(con, "PRAGMA platform")
-    paths = sorted((directory / str(version) / str(platform)).glob(f"*{SUFFIX}"))
+    version, platform = target()
+    paths = sorted((directory / version / platform).glob(f"*{SUFFIX}"))
     return {path.name.removesuffix(SUFFIX): path for path in paths}
 
 

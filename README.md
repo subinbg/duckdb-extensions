@@ -1,9 +1,8 @@
 # duckdb-extensions
 
-Builds an offline extension bundle for the DuckDB Python client, for machines that cannot reach `extensions.duckdb.org`. A bundle is one tarball (meant to be a GitHub Release asset) with:
+Builds our own extensions for the DuckDB Python client, and releases them as a bundle: one tarball per platform, a GitHub Release asset. They are written in Rust against DuckDB's stable C API: `hello`, a template, `webui`, a browser UI that needs no network access, and `bigquery`, which reads Google BigQuery.
 
-1. DuckDB's official core extensions `httpfs`, `aws`, `iceberg`, `avro` (needed by iceberg), `sqlite_scanner` and `postgres_scanner`, byte for byte as DuckDB publishes them.
-2. Our own extensions, written in Rust against DuckDB's stable C API: `hello`, a template, `webui`, a browser UI that needs no network access, and `bigquery`, which reads Google BigQuery.
+DuckDB's official core extensions `httpfs`, `aws`, `iceberg`, `avro` (needed by iceberg), `sqlite_scanner` and `postgres_scanner` are downloaded to test ours with, and left out of the bundle: DuckDB installs them itself.
 
 ## Build and test
 
@@ -12,7 +11,7 @@ cargo test --locked  # unit tests of our extensions
 make versions        # check that the versions named across the repository fit build.env
 make build           # download the official extensions and compile ours
 make test            # pytest on what was built
-make dist            # the build again, and the release tarball
+make dist            # compile ours, and the release tarball of them
 ```
 
 `make build` calls `scripts/build.py`, and `build.env` holds every argument it is called with:
@@ -24,11 +23,11 @@ make dist            # the build again, and the release tarball
 | `CUSTOM_EXTENSIONS` | `--custom-extensions`, once per name | The crates under `extensions/` to compile. Left empty, none is |
 | `CORE_DIRECTORY` | `--core-directory` | The extension directory the official extensions are written into |
 | `CUSTOM_DIRECTORY` | `--custom-directory` | The extension directory ours are written into |
-| `DIST_DIRECTORY` | `--dist-directory` | Where `make dist` also writes the release tarball and its SHA-256 |
+| `DIST_DIRECTORY` | `--dist-directory` | Where `make dist` writes the release tarball of our extensions, and its SHA-256 |
 
 `build.py` works for the machine it runs on. An extension directory is what DuckDB loads from: `<directory>/<version>/<platform>/<name>.duckdb_extension`. Nothing is installed or copied after the build.
 
-`make test` gives the tests the two directories, as the environment variables `CORE_DIRECTORY` and `CUSTOM_DIRECTORY`. pytest run by hand needs both set.
+`make test` gives the tests the two directories, as the environment variables `CORE_DIRECTORY` and `CUSTOM_DIRECTORY`. pytest run by hand needs both set. It also gives `DIST_DIRECTORY`, where `tests/test_dist.py` checks the release tarball of the machine, when `make dist` wrote one.
 
 A value given to `make` replaces the one in `build.env` for that run, such as `make build CUSTOM_EXTENSIONS=hello`.
 
@@ -50,6 +49,7 @@ A system provides cargo, make, and uv or Python 3.12. What is built and tested i
 | Your machine | [rustup](https://rustup.rs) and uv, installed once | The commands above |
 | Docker | `Dockerfile` | `make docker-test`, `make docker-dist` |
 | GitHub Actions | `.github/workflows/test.yml` | Every push |
+| GitHub Actions, releases | `.github/workflows/release.yml` | A tag `release-<DUCKDB_VERSION>[-<suffix>]`, such as `release-v2.0.0`; by hand, it builds the tarballs without releasing them |
 
 `build.py` uses the standard library only. `make` runs it with `uv run`; a system without uv names its Python, as the `Dockerfile` does with `make dist PYTHON=python3.12`.
 
@@ -57,21 +57,28 @@ The Docker system builds on AlmaLinux 8 and tests in a second image that has Pyt
 
 ## Using the extensions
 
-A process opens its database with the extension directories, from a build or from an unpacked tarball (`core/` and `custom/`):
+A release holds one tarball per platform, `duckdb-extensions-<DuckDB version>-<platform>.tar.gz` for `linux_amd64` and `osx_arm64`, and `SHA256SUMS`. Unpacked, a tarball is an extension directory:
+
+```bash
+gh release download release-v2.0.0 -R subinbg/duckdb-extensions -p '*osx_arm64*' -p SHA256SUMS
+shasum -a 256 --check --ignore-missing SHA256SUMS
+mkdir -p /opt/duckdb/extensions && tar -xzf duckdb-extensions-v2.0.0-osx_arm64.tar.gz -C /opt/duckdb/extensions
+```
+
+A process opens its database with that directory, or with `build/custom` of a build:
 
 ```python
 import duckdb
 
 con = duckdb.connect(
     config={
-        "extension_directories": ["/opt/duckdb/core", "/opt/duckdb/custom"],
+        "extension_directories": ["/opt/duckdb/extensions"],
         "allow_unsigned_extensions": True,  # needed for our extensions
-        "autoinstall_known_extensions": False,  # never contact extensions.duckdb.org on its own
     }
 )
-con.execute("ATTACH 'app.sqlite' AS app (TYPE sqlite)")  # official extensions load on demand
 con.execute("LOAD hello")  # ours are loaded by name
 con.execute("SELECT hello('duck')").fetchall()  # [('Hello, duck!',)]
+con.execute("ATTACH 'app.sqlite' AS app (TYPE sqlite)")  # official extensions install and load as DuckDB's always do
 ```
 
 The client must be exactly the version the directories were built for (`pip install duckdb==2.0.0`). Extensions are loaded into an open database, so each newly opened database loads them again.
@@ -90,8 +97,8 @@ The client must be exactly the version the directories were built for (`pip inst
 
 DuckDB checks every extension it loads against its own keys, which the official extensions pass. Ours carry no signature, so a database that loads them is opened with `allow_unsigned_extensions`, and that setting turns the check off for every extension of that database.
 
-1. Without the setting, the official extensions load as above and ours are refused.
-2. With it, DuckDB checks nothing: the official files are then checked by us. `tests/test_core_extensions.py` loads each one in a database that has the check on, and the tarball's SHA-256 covers the way to another machine.
+1. Without the setting, the official extensions load and ours are refused.
+2. With it, DuckDB checks nothing, the official extensions included. The release's `SHA256SUMS` covers ours on their way to another machine.
 
 ## Browser UI (`webui`)
 
@@ -232,6 +239,7 @@ Without credentials, the first call waits about a minute for the metadata server
 | `tests/` | pytest suite (`conftest.py` takes the two directories from the environment, `support.py` holds shared helpers) |
 | `Dockerfile` | The Docker system |
 | `.github/workflows/test.yml` | The GitHub Actions system |
+| `.github/workflows/release.yml` | The releases: the tarball of each platform, tested, as assets of a GitHub Release |
 
 ## Python tooling
 

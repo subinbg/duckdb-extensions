@@ -13,11 +13,12 @@ COPY . .
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
     cargo test --locked
+# DuckDB's extensions are downloaded for the tests only; the release tarball holds ours.
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
-    make dist PYTHON=python3.12 DIST_DIRECTORY=/dist
+    make build dist PYTHON=python3.12
 
 FROM scratch AS dist
-COPY --from=build /dist /
+COPY --from=build /src/dist /
 
 FROM python:3.12-slim-bookworm AS test
 RUN apt-get update \

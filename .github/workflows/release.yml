@@ -1,0 +1,93 @@
+name: release
+
+# Builds the release tarball of our extensions for linux-x64 and darwin-arm64, and tests each.
+# Pushing a release-<DuckDB version>[-suffix] tag, such as release-v2.0.0, also publishes a GitHub Release;
+# running the workflow by hand builds the tarballs only.
+# What is built and tested is not decided here: the commands are those of the Makefile, with the arguments of build.env.
+on:
+  push:
+    tags: ['release-*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  meta:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.meta.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: meta
+        run: |
+          # the DuckDB release the extensions are built for, e.g. v2.0.0
+          duckdb="$(sed -n 's/^DUCKDB_VERSION=//p' build.env)"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            ref="${GITHUB_REF_NAME#release-}"
+            [[ "${ref%%-*}" == "$duckdb" ]] || { echo "$GITHUB_REF_NAME is not a release for DuckDB $duckdb" >&2; exit 1; }
+          else
+            ref="$duckdb"
+          fi
+          echo "ref=$ref" >>"$GITHUB_OUTPUT"
+
+  # Built on AlmaLinux 8 (glibc 2.28), and tested offline in a second image, the tarball included.
+  linux-x64:
+    name: Build linux-x64
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - run: make docker-test ARCH=amd64
+      - run: make docker-dist ARCH=amd64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: duckdb-extensions-linux-x64
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  # Built natively: the extensions link C libraries (aws-lc, zstd), which do not cross-compile to macOS as Go does.
+  darwin-arm64:
+    name: Build darwin-arm64
+    needs: meta
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uv sync --locked
+      - run: cargo test --locked
+      - run: make build dist
+      - run: make test
+      - uses: actions/upload-artifact@v7
+        with:
+          name: duckdb-extensions-darwin-arm64
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [meta, linux-x64, darwin-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: duckdb-extensions-*
+          merge-multiple: true
+          path: dist
+      - name: Checksums of the tarballs
+        run: |
+          cd dist
+          sha256sum *.tar.gz >SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@v3
+        with:
+          name: duckdb-extensions ${{ needs.meta.outputs.ref }}
+          files: dist/*
