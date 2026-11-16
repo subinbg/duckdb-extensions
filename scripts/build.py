@@ -55,6 +55,17 @@ def compile_custom_extensions(names: list[str]) -> Iterator[tuple[Path, Path]]:
             yield Path(message["manifest_path"]), Path(message["filenames"][0])
 
 
+def replace_file(target: Path, content: bytes) -> None:
+    """Write `content` beside `target` and rename it over `target`.
+
+    macOS kills a process that loads a library whose file was rewritten in place while another process had it loaded,
+    as a Python process that loaded the extension still does. A renamed file is a new one.
+    """
+    written = target.with_name(f"{target.name}.tmp")
+    written.write_bytes(content)
+    written.replace(target)
+
+
 def metadata_field(value: str) -> bytes:
     raw = value.encode("ascii")
 
@@ -86,7 +97,7 @@ def build_custom_extensions(names: list[str], directory: Path, platform: str) ->
         footer = b"".join(metadata_field(field) for field in fields) + b"\x00" * SIGNATURE_SIZE
 
         target = directory / f"{name}{SUFFIX}"
-        target.write_bytes(library.read_bytes() + footer)
+        replace_file(target, library.read_bytes() + footer)
         print(f"custom  {target} ({name} {version}, C API {capi_version})")
 
 
