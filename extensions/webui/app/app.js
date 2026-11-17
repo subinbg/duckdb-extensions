@@ -17,6 +17,9 @@ import { Cell } from "./cell.js";
 import * as templates from "./templates.js";
 
 const FIRST_CELL = "-- Run with Ctrl+Enter or ⌘+Enter. Only the last statement's rows are shown.\nSHOW ALL TABLES;";
+/** The narrowest a side pane is dragged to, and the share of the window it may take at most. */
+const MIN_PANE_PX = 180;
+const MAX_PANE_SHARE = 0.5;
 /** The notebook is saved this long after the last change to it. */
 const SAVE_DELAY_MS = 700;
 /** Another client of the same DuckDB process may attach or detach databases, so the catalog is read again. */
@@ -39,7 +42,43 @@ function scheduleSave() {
   saving = setTimeout(() => ask("save_notebook", { cells: texts() }).catch(() => {}), SAVE_DELAY_MS);
 }
 
+/**
+ * Let `handle` drag the width `property` of the page, which `width` reads from where the pointer is.
+ * This browser remembers the width: it is the viewer's, not the notebook's.
+ */
+function resizable(handle, property, width) {
+  const app = document.getElementById("app");
+  // The browser may refuse storage; the width then lasts as long as the page.
+  const store = (act) => {
+    try {
+      return act(localStorage);
+    } catch {
+      return null;
+    }
+  };
+  const saved = store((storage) => storage.getItem(property));
+  if (saved) app.style.setProperty(property, saved);
+
+  handle.onpointerdown = (event) => {
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    handle.classList.add("dragging");
+    handle.onpointermove = ({ clientX }) => {
+      const pixels = Math.min(Math.max(width(clientX), MIN_PANE_PX), innerWidth * MAX_PANE_SHARE);
+      app.style.setProperty(property, `${Math.round(pixels)}px`);
+    };
+    handle.onpointerup = () => {
+      handle.onpointermove = null;
+      handle.classList.remove("dragging");
+      store((storage) => storage.setItem(property, app.style.getPropertyValue(property)));
+    };
+  };
+}
+
 async function start() {
+  resizable(document.getElementById("sidebar-resizer"), "--sidebar-width", (x) => x);
+  resizable(document.getElementById("inspector-resizer"), "--inspector-width", (x) => innerWidth - x);
+
   const notebook = await ask("notebook").catch(() => ({ cells: [] }));
   const texts = notebook.cells.length > 0 ? notebook.cells : [FIRST_CELL];
   texts.forEach((sql) => addCell(sql));

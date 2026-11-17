@@ -5,7 +5,7 @@
 use serde::de::DeserializeOwned;
 
 use super::Engine;
-use crate::duck::{Conn, Result};
+use crate::duck::{Conn, Result, quote_identifier};
 use crate::lock;
 use crate::protocol::{Catalog, Relation};
 
@@ -14,10 +14,19 @@ const CATALOG: &str = "
         duckdb_version: version(),
         current_database: $1::VARCHAR,
         current_schema: $2::VARCHAR,
+        default_database: current_database(),
         databases: (
             SELECT list({name: database_name, kind: type, path: path, read_only: readonly} ORDER BY database_name)
             FROM duckdb_databases()
             WHERE NOT internal
+        ),
+        memory: (
+            SELECT {
+                used: coalesce(sum(memory_usage_bytes), 0),
+                spilled: coalesce(sum(temporary_storage_bytes), 0),
+                \"limit\": parse_formatted_bytes(current_setting('memory_limit')),
+            }
+            FROM duckdb_memory()
         ),
     })::VARCHAR";
 
@@ -61,5 +70,17 @@ impl Engine {
     /// The tables and views of one database, with their columns.
     pub fn relations(&self, database: &str) -> Result<Vec<Relation>> {
         document(&lock(&self.meta), RELATIONS, &[database])
+    }
+
+    /// Drop a table, whose rows are deleted, or a view, of which only the definition is.
+    pub fn drop_relation(&self, database: &str, schema: &str, name: &str, is_view: bool) -> Result<()> {
+        let path = [database, schema, name].map(quote_identifier).join(".");
+        let kind = if is_view { "VIEW" } else { "TABLE" };
+        lock(&self.meta).run(&format!("DROP {kind} {path}"), &[]).map(drop)
+    }
+
+    /// Detach a database: DuckDB forgets it, and its data stays where it is.
+    pub fn detach(&self, database: &str) -> Result<()> {
+        lock(&self.meta).run(&format!("DETACH {}", quote_identifier(database)), &[]).map(drop)
     }
 }

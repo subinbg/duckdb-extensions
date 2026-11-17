@@ -1,11 +1,16 @@
-// The catalog tree: attached databases, their schemas, tables and views, and the columns of each.
+// The catalog tree: attached databases, their schemas, tables and views, and the columns of each;
+// and under it, how much memory DuckDB holds.
 
 import { ask } from "./api.js";
 import { fill, h } from "./dom.js";
-import { compact } from "./format.js";
+import { compact, size } from "./format.js";
+import { confirmMenu } from "./menu.js";
 import { isKeyword } from "./sql.js";
 
 const tree = document.getElementById("tree");
+const memory = document.getElementById("memory");
+/** The share of DuckDB's memory limit beyond which the meter turns red. */
+const HIGH_MEMORY = 0.8;
 
 let catalog = { databases: [] };
 /** The tables and views of each database that was opened in the tree. */
@@ -39,6 +44,7 @@ export async function refresh(tables) {
   if (catalog.databases.length === 0) expanded.add(key(fetched.current_database));
   catalog = fetched;
   document.getElementById("version").textContent = catalog.duckdb_version;
+  drawMemory(catalog.memory);
 
   const names = catalog.databases.map((database) => database.name);
   [...relations.keys()].filter((database) => !names.includes(database)).forEach((gone) => relations.delete(gone));
@@ -77,6 +83,27 @@ export function identifier(name) {
 }
 
 const draw = () => fill(tree, catalog.databases.map(drawDatabase));
+
+/** What DuckDB holds in memory, against its limit, and what it spilled to disk when memory ran short. */
+function drawMemory({ used, spilled, limit }) {
+  const share = limit > 0 ? Math.min(used / limit, 1) : 0;
+  const bar = h("div", { style: `width: ${(share * 100).toFixed(1)}%` });
+  const onDisk = spilled > 0 && ` · ${size(spilled)} on disk`;
+  fill(
+    memory,
+    h("div", {}, "Memory ", h("b", {}, size(used)), ` of ${size(limit)}`, onDisk),
+    h("div", { className: share > HIGH_MEMORY ? "meter high" : "meter" }, bar),
+  );
+}
+
+/** A button of a node, shown as the pointer is over it, that runs `act` without opening or closing the node. */
+function nodeButton(className, title, text, act) {
+  const onclick = (event) => {
+    event.stopPropagation();
+    act(event);
+  };
+  return h("button", { className, title, onclick }, text);
+}
 const span = (className, text) => h("span", { className }, text);
 const twist = (open) => span(open ? "twist expanded" : "twist");
 
@@ -84,6 +111,12 @@ function drawDatabase({ name, kind, path, read_only: readOnly }) {
   const open = expanded.has(key(name));
   const className = name === catalog.current_database ? "node current" : "node";
   const where = path === null ? "in memory" : `${readOnly ? "read-only · " : ""}${path}`;
+  // Neither the database that unqualified names resolve to nor the one DuckDB was opened with is detached.
+  const detachable = name !== catalog.current_database && name !== catalog.default_database;
+  const detach = (event) =>
+    confirmMenu(event, `Detach ${name}?`, "DuckDB forgets the database; its data stays where it is.", "Detach", () =>
+      ask("detach", { database: name }).then(() => refresh(true)),
+    );
   const node = h(
     "div",
     { className, title: `${kind} · ${where}`, onclick: () => toggle(name) },
@@ -91,6 +124,7 @@ function drawDatabase({ name, kind, path, read_only: readOnly }) {
     span("icon database"),
     span("label", name),
     span("dim", kind),
+    detachable && nodeButton("drop", "Detach this database", "✕", detach),
   );
   if (!open) return node;
 
@@ -102,18 +136,22 @@ function drawDatabase({ name, kind, path, read_only: readOnly }) {
   const heading = ({ schema }, index) =>
     schema !== listed[index - 1]?.schema &&
     h("div", { className: "node level-1 schema" }, span("icon schema"), span("label", schema));
-  return [node, listed.map((relation, index) => [heading(relation, index), drawRelation(name, relation)])];
+  // Only DuckDB's own databases drop tables here: another's would lose them at their source.
+  const droppable = kind === "duckdb" && !readOnly;
+  const relation = (listed, index) => [heading(listed, index), drawRelation(name, listed, droppable)];
+  return [node, listed.map(relation)];
 }
 
-function drawRelation(database, { schema, name, is_view: isView, estimated_rows: rows, columns }) {
+function drawRelation(database, { schema, name, is_view: isView, estimated_rows: rows, columns }, droppable) {
   const open = expanded.has(key(database, schema, name));
   const kind = isView ? "view" : "table";
 
-  // The button opens the relation in a new cell, without opening its line of the tree.
-  const preview = (event) => {
-    event.stopPropagation();
-    openRelation(`FROM ${identifier(database)}.${identifier(schema)}.${identifier(name)}`);
-  };
+  const preview = () => openRelation(`FROM ${identifier(database)}.${identifier(schema)}.${identifier(name)}`);
+  const consequence = isView ? "Only its definition is deleted." : "Its rows are deleted.";
+  const dropIt = (event) =>
+    confirmMenu(event, `Drop ${kind} ${name}?`, consequence, "Drop", () =>
+      ask("drop_relation", { database, schema, name, is_view: isView }).then(() => refresh(true)),
+    );
   const node = h(
     "div",
     { className: "node level-2", title: kind, onclick: () => toggle(database, schema, name) },
@@ -121,7 +159,8 @@ function drawRelation(database, { schema, name, is_view: isView, estimated_rows:
     span(`icon ${kind}`),
     span("label", name),
     span("dim", rows === null ? "" : compact(rows)),
-    h("button", { className: "open", title: "Open in a new cell", onclick: preview }, "▶"),
+    nodeButton("open", "Open in a new cell", "▶", preview),
+    droppable && nodeButton("drop", `Drop this ${kind}`, "✕", dropIt),
   );
 
   const column = ({ name, data_type: dataType }) => {

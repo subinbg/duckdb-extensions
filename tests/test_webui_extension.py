@@ -164,6 +164,8 @@ def test_catalog_lists_databases_tables_and_columns(ui: Ui, tmp_path: Path) -> N
     catalog = ui.ask("catalog")
     assert {database["name"] for database in catalog["databases"]} == {"memory", "other"}
     assert (catalog["current_database"], catalog["current_schema"]) == ("memory", "main")
+    assert catalog["memory"]["limit"] > catalog["memory"]["used"] > 0
+    assert catalog["default_database"] == "memory"
     assert ui.ask("relations", database="other") == []
 
     relations = {relation["name"]: relation for relation in ui.ask("relations", database="memory")}
@@ -176,6 +178,28 @@ def test_catalog_lists_databases_tables_and_columns(ui: Ui, tmp_path: Path) -> N
     # The catalog follows the notebook's connection.
     ui.run("USE other")
     assert ui.ask("catalog")["current_database"] == "other"
+
+
+def test_tables_and_views_are_dropped_and_databases_detached(ui: Ui, tmp_path: Path) -> None:
+    ui.con.execute("CREATE TABLE numbers AS SELECT i FROM range(1000000) t(i)")
+    ui.con.execute("CREATE VIEW few AS SELECT * FROM numbers LIMIT 3")
+    ui.con.execute(f"ATTACH '{tmp_path / 'other.duckdb'}' AS other")
+    held = ui.ask("catalog")["memory"]["used"]
+
+    assert ui.ask("drop_relation", database="memory", schema="main", name="few", is_view=True) is None
+    assert ui.ask("drop_relation", database="memory", schema="main", name="numbers", is_view=False) is None
+    assert ui.ask("relations", database="memory") == []
+    # The memory of a dropped table goes back to DuckDB.
+    assert ui.ask("catalog")["memory"]["used"] < held
+
+    # Detaching leaves the database's file as it is.
+    assert ui.ask("detach", database="other") is None
+    assert [database["name"] for database in ui.ask("catalog")["databases"]] == ["memory"]
+    assert (tmp_path / "other.duckdb").exists()
+
+    refused = ui.post("detach", database="memory")
+    assert refused.status == 400
+    assert "default database" in refused.json()["error"]
 
 
 def test_outcome_of_each_kind_of_statement(ui: Ui) -> None:

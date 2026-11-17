@@ -70,13 +70,45 @@ body {
 }
 
 #app {
+  --sidebar-width: 264px;
+  --inspector-width: 380px;
+  position: relative;
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   height: 100vh;
 }
 
 #app.with-inspector {
-  grid-template-columns: 264px minmax(0, 1fr) 380px;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--inspector-width);
+}
+
+/* Handles over the inner borders of the side panes, which drag them wider or narrower. */
+.resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 8px;
+  cursor: col-resize;
+}
+
+.resizer:hover,
+.resizer.dragging {
+  background: var(--accent);
+  opacity: 0.45;
+}
+
+#sidebar-resizer {
+  left: calc(var(--sidebar-width) - 4px);
+}
+
+#inspector-resizer {
+  display: none;
+  right: calc(var(--inspector-width) - 4px);
+}
+
+.with-inspector #inspector-resizer {
+  display: block;
 }
 
 .boot {
@@ -362,7 +394,8 @@ code {
   content: "V";
 }
 
-.node .open {
+.node .open,
+.node .drop {
   visibility: hidden;
   border: 0;
   background: none;
@@ -372,8 +405,43 @@ code {
   font-size: 13px;
 }
 
-.node:hover .open {
+.node .drop {
+  color: var(--error);
+  font-weight: 700;
+}
+
+.node:hover .open,
+.node:hover .drop {
   visibility: visible;
+}
+
+/* Under the tree: how much memory DuckDB holds, against its limit. */
+#memory {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 12.5px;
+}
+
+#memory b {
+  color: var(--text);
+}
+
+.meter {
+  height: 6px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--line-soft);
+}
+
+.meter > div {
+  height: 100%;
+  background: var(--accent);
+}
+
+.meter.high > div {
+  background: var(--error);
 }
 
 /* Notebook */
@@ -573,6 +641,29 @@ code {
 
 .popover > button:hover {
   background: var(--accent-soft);
+}
+
+.menu-note {
+  padding: 0 8px 6px;
+  color: var(--dim);
+}
+
+.menu-error {
+  color: var(--error);
+  overflow-wrap: anywhere;
+}
+
+.menu-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 8px 4px;
+}
+
+.btn.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
 }
 
 .menu-title {

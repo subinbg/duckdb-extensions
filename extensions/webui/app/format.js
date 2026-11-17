@@ -9,6 +9,13 @@ export const grouped = (count) => grouping.format(count);
 /** Spell a count in a few characters: 950, 12K, 4.1M, 600M. */
 export const compact = (count) => compacting.format(count);
 
+/** Spell a size in bytes as DuckDB does: 812 bytes, 3.4 MiB, 1.2 GiB. */
+export function size(bytes) {
+  const units = ["bytes", "KiB", "MiB", "GiB", "TiB"];
+  const power = Math.min(Math.floor(Math.log2(Math.max(bytes, 1)) / 10), units.length - 1);
+  return `${(bytes / 1024 ** power).toFixed(power === 0 ? 0 : 1)} ${units[power]}`;
+}
+
 /** Spell a duration: 164 ms, 3.9 s, 1 m 36 s. */
 export function duration(milliseconds) {
   if (milliseconds < 1000) return `${milliseconds} ms`;

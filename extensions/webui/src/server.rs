@@ -236,6 +236,10 @@ fn api(shared: &Shared, request: &mut tiny_http::Request) -> Reply {
     Ok(match asked {
         Request::Catalog => json(&engine.catalog()?),
         Request::Relations { database } => json(&engine.relations(&database)?),
+        Request::DropRelation { database, schema, name, is_view } => {
+            json(&engine.drop_relation(&database, &schema, &name, is_view)?)
+        }
+        Request::Detach { database } => json(&engine.detach(&database)?),
 
         Request::Run { sql } => json(&engine.run(&sql)),
         Request::Interrupt => json(&engine.interrupt()),

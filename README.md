@@ -127,7 +127,11 @@ It replaces DuckDB's `ui` extension, which is left out of the bundle: that exten
 | Reading a source | Written by hand | **+ Add a source** asks for the fields of a template and adds a cell with its SQL: it attaches a DuckDB, SQLite or PostgreSQL database, or creates a view of Parquet, CSV, JSON, Avro or Iceberg files or of a BigQuery table or query, which reads no rows until it is queried |
 | Access control | None: any local process can run SQL | A random token, part of the URL, required by every request |
 | Databases attached to your session | Three, for its own use | None |
+| Dropping and detaching | In SQL only | ✕ beside a table or view of a DuckDB database drops it, and beside an attached database detaches it, once confirmed. Tables of PostgreSQL and SQLite are not dropped from there, which would delete them at their source, and the database DuckDB was opened with is not detached |
+| Memory | Not shown | Under the catalog: what DuckDB holds in memory and has spilled to disk, against its `memory_limit`. The process holds more, outside DuckDB |
 | Size of the extension | 56 MB | 1.0 MB |
+
+The catalog and the value panel are dragged wider or narrower by their inner borders, and the browser remembers their widths.
 
 The templates keep nothing: no connection and no secret is saved, and the cells they add hold no password. A PostgreSQL password comes from the `~/.pgpass` file or the `PGPASSWORD` variable of the DuckDB process, BigQuery signs in as `bigquery` describes, and a file template for an `s3://` path loads `aws` first, which signs in as [Cloud storage](#cloud-storage) describes. GCS takes a token, which the process that starts the UI gives in a secret, so that no cell holds it.
 

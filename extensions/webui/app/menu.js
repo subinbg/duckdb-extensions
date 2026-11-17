@@ -36,6 +36,25 @@ export function openMenu(event, items, className = "popover") {
 
 export const closeMenu = () => fill(layer);
 
+/**
+ * Ask below the clicked button before something that cannot be undone: `question`, what follows from it, and a
+ * button `verb` that runs `act`. The menu closes once `act` is done, and shows why when it fails.
+ */
+export function confirmMenu(event, question, consequence, verb, act) {
+  const note = h("div", { className: "menu-note" }, consequence);
+  const run = () => act().then(closeMenu, (error) => fill(note, h("span", { className: "menu-error" }, error.message)));
+  openMenu(event, [
+    h("div", { className: "menu-title" }, question),
+    note,
+    h(
+      "div",
+      { className: "menu-buttons" },
+      h("button", { className: "btn", onclick: closeMenu }, "Cancel"),
+      h("button", { className: "btn danger", onclick: run }, verb),
+    ),
+  ]);
+}
+
 document.addEventListener("keydown", (event) => event.key === "Escape" && closeMenu());
 
 /** The menu of a cell's export button. */

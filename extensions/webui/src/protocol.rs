@@ -15,6 +15,10 @@ pub enum Request {
     Catalog,
     /// The tables and views of one database: `Vec<Relation>`.
     Relations { database: String },
+    /// Drop a table or view of a DuckDB database: nothing.
+    DropRelation { database: String, schema: String, name: String, is_view: bool },
+    /// Detach a database, whose data stays where it is: nothing.
+    Detach { database: String },
 
     /// Run the statements of a cell: [`RunResponse`].
     Run { sql: String },
@@ -60,6 +64,18 @@ pub struct Catalog {
     /// Where unqualified names resolve for the notebook's connection.
     pub current_database: String,
     pub current_schema: String,
+    /// The database DuckDB was opened with, which the extension's own connections are in: it is not detached.
+    pub default_database: String,
+    pub memory: Memory,
+}
+
+/// What DuckDB holds, in bytes: in memory, and spilled to disk when memory ran short, against its `memory_limit`.
+/// The process holds more than this, outside DuckDB.
+#[derive(Serialize, Deserialize)]
+pub struct Memory {
+    pub used: u64,
+    pub spilled: u64,
+    pub limit: u64,
 }
 
 #[derive(Serialize, Deserialize)]
