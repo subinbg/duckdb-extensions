@@ -35,8 +35,6 @@ export class Cell {
   /** The result in the grid: the one of the last run, or its rows sorted and filtered. */
   shown = null;
   grid = null;
-  /** The number of rows of `shown`, once DuckDB has counted them. */
-  total = null;
   /** Whether the server is loading more rows of `shown`. */
   loading = false;
 
@@ -90,9 +88,7 @@ export class Cell {
     if (this.shown === null) return "";
 
     const { loaded, complete, view } = this.shown;
-    let rows = `first ${grouped(loaded)} rows`;
-    if (complete) rows = `${grouped(loaded)} rows`;
-    else if (this.total !== null) rows = `${grouped(loaded)} of ${grouped(this.total)} rows loaded`;
+    const rows = complete ? `${grouped(loaded)} rows` : `first ${grouped(loaded)} rows`;
 
     const reshaped = view.sort.length + view.filters.length > 0 ? " · sorted or filtered by DuckDB" : "";
     return `${rows} · ${duration(this.elapsed)}${reshaped}`;
@@ -169,20 +165,15 @@ export class Cell {
     this.draw();
   }
 
-  /** Put a result in the grid, or nothing, and have DuckDB count its rows when the server has not loaded them all. */
-  async show(info) {
-    Object.assign(this, { shown: info, total: null, loading: false });
+  /**
+   * Put a result in the grid, or nothing.
+   * Its rows are not counted until all are loaded: counting an unfinished result would read its whole source.
+   */
+  show(info) {
+    Object.assign(this, { shown: info, loading: false });
     this.grid = info && new Grid(this, info);
     fill(this.gridBox, this.grid?.element);
     this.draw();
-    if (info === null || info.complete || !info.repeatable) return;
-
-    // A count that fails, as for a temporary table of the notebook's connection, is simply not shown.
-    const total = await ask("count", { result: info.id }).catch(() => null);
-    if (this.shown?.id === info.id) {
-      this.total = total;
-      this.draw();
-    }
   }
 
   /** Run the cell: its selected text if any is selected, otherwise all of it. */

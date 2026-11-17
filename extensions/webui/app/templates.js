@@ -1,7 +1,9 @@
 // Templates of the SQL that reads a source: a database to attach, a BigQuery table or query, or files.
 //
-// Each asks for the fields its SQL needs, and adds a cell with that SQL. Nothing is kept, neither connection
-// nor secret: a PostgreSQL password, for one, comes from the DuckDB process's ~/.pgpass or PGPASSWORD.
+// Each asks for the fields its SQL needs, and adds a cell with that SQL: a database is attached, and files and
+// BigQuery become views, tables of the catalog whose rows are read only when they are queried.
+// Nothing is kept, neither connection nor secret: a PostgreSQL password, for one, comes from the DuckDB process's
+// ~/.pgpass or PGPASSWORD.
 
 import { identifier } from "./catalog.js";
 import { fill, h } from "./dom.js";
@@ -23,7 +25,7 @@ const FILES = (example, hint) => ({
   required: true,
   hint: hint ?? "A path, a pattern such as data/*.parquet, or an https:// or s3:// or gs:// URL",
 });
-const VIEW = { key: "view", label: "Save as view", example: "optional: a name for the view" };
+const VIEW = (example) => ({ key: "view", label: "View name", example });
 
 /** `ATTACH` the database at `target` as the field `name`, of `type` unless it is DuckDB's. */
 function attach({ name, readOnly }, target, type) {
@@ -31,18 +33,28 @@ function attach({ name, readOnly }, target, type) {
   return `ATTACH ${literal(target)} AS ${identifier(name)}${options.length > 0 ? ` (${options.join(", ")})` : ""};`;
 }
 
-/** Read the files of the field `path` with `reader`, or define a view that does. */
+/** A view named `name` that reads `from`. Creating it reads only what DuckDB needs to know its columns. */
+const createView = (name, from) => `CREATE OR REPLACE VIEW ${identifier(name)} AS ${from};`;
+
+/** A name for a view of the files at `path`: their file's or folder's, or an Iceberg table's folder's. */
+function nameOf(path) {
+  const parts = path.replace(/\/metadata\/[^/]*$/, "").split("/").filter(Boolean);
+  // A pattern, such as data/*.parquet, is named after its folder.
+  const last = /[*?[]/.test(parts.at(-1) ?? "") ? parts.at(-2) : parts.at(-1);
+  return (last ?? "").split(".")[0].replace(/\W+/g, "_").replace(/^_+|_+$/g, "") || "files";
+}
+
+/** A view of the files of the field `path`, read with `reader`, named by the field `view` or after the files. */
 const read =
   (reader) =>
   ({ path, view }) => {
-    const from = `FROM ${reader}(${literal(path)})`;
     // The aws extension signs S3 requests with the AWS credential chain: aws configure, SSO or the environment.
     const signed = path.startsWith("s3://") ? "LOAD aws;\n" : "";
-    return signed + (view ? `CREATE OR REPLACE VIEW ${identifier(view)} AS ${from};` : `${from};`);
+    return signed + createView(view || nameOf(path), `FROM ${reader}(${literal(path)})`);
   };
 
 /** Custom extensions are not loaded on their own. */
-const bigquery = (call) => `LOAD bigquery;\n${call};`;
+const bigquery = (statement) => `LOAD bigquery;\n${statement}`;
 
 /** Groups of sources, each with its badge, the fields it asks for, and the SQL made of them. */
 const SOURCES = [
@@ -93,31 +105,36 @@ const SOURCES = [
         id: "bigquery",
         badge: "BQ",
         label: "BigQuery table",
-        about: "Read a table through the Storage Read API",
+        about: "A view of a table, read through the Storage Read API",
         fields: [
           { key: "table", label: "Table", example: "project.dataset.table", required: true },
           { key: "billing", label: "Billing project", example: "optional: pays for the read" },
           { key: "filter", label: "Filter", example: "optional: GoogleSQL, such as year > 2020" },
+          VIEW("optional: named after the table"),
         ],
-        sql: ({ table, billing, filter }) => {
+        hint: "Creating the view reads the table's columns only; its rows are read when the view is queried.",
+        sql: ({ table, billing, filter, view }) => {
           const options = [
             billing && `billing_project := ${literal(billing)}`,
             filter && `filter := ${literal(filter)}`,
           ];
           const call = [literal(table), ...options].filter(Boolean).join(", ");
-          return bigquery(`FROM bigquery_scan(${call})`);
+          return bigquery(createView(view || table.split(".").pop(), `FROM bigquery_scan(${call})`));
         },
       },
       {
         id: "bigquery",
         badge: "BQ",
         label: "BigQuery query",
-        about: "Run GoogleSQL in BigQuery, over views as well",
+        about: "A view of GoogleSQL that BigQuery runs, over its views as well",
         fields: [
           { key: "project", label: "Project", example: "runs the query and pays for it", required: true },
           { key: "query", label: "Query", example: "SELECT * FROM dataset.view", required: true, kind: "area" },
+          { key: "view", label: "View name", value: "query_result", required: true },
         ],
-        sql: ({ project, query }) => bigquery(`FROM bigquery_query(${literal(project)}, ${literal(query)})`),
+        hint: "Creating the view runs the query once, for its columns, and each query of the view runs it again.",
+        sql: ({ project, query, view }) =>
+          bigquery(createView(view, `FROM bigquery_query(${literal(project)}, ${literal(query)})`)),
       },
       {
         id: "bigquery",
@@ -131,8 +148,8 @@ const SOURCES = [
         sql: ({ project, dataset }) =>
           bigquery(
             dataset
-              ? `FROM bigquery_tables(${literal(`${project}.${dataset}`)})`
-              : `FROM bigquery_datasets(${literal(project)})`,
+              ? `FROM bigquery_tables(${literal(`${project}.${dataset}`)});`
+              : `FROM bigquery_datasets(${literal(project)});`,
           ),
       },
     ],
@@ -154,8 +171,9 @@ const SOURCES = [
       },
     ].map((file) => ({
       ...file,
-      about: `Read with ${file.reader}`,
-      fields: [FILES(file.example, file.pathHint), VIEW],
+      about: `A view that reads with ${file.reader}`,
+      fields: [FILES(file.example, file.pathHint), VIEW("optional: named after the files")],
+      hint: "Creating the view reads only what its columns need, such as a Parquet footer or a CSV file's first rows.",
       sql: read(file.reader),
     })),
   },

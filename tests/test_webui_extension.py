@@ -213,8 +213,6 @@ def test_rows_are_loaded_on_demand(ui: Ui) -> None:
     assert 0 < result["loaded"] < 100000
     assert (result["complete"], result["streaming"], result["repeatable"]) == (False, True, True)
 
-    # Counting loads nothing.
-    assert ui.ask("count", result=result["id"]) == 100000
     assert ui.ask("load", result=result["id"], want=0, resume=False)["loaded"] == result["loaded"]
 
     loaded = ui.ask("load", result=result["id"], want=50000, resume=False)
@@ -254,7 +252,7 @@ def test_sort_and_filter_cover_rows_that_are_not_loaded(ui: Ui) -> None:
         ["99987", "7", "row 99987"],
         ["99977", "7", "row 99977"],
     ]
-    assert ui.ask("count", result=shaped["id"]) == 1111
+    assert ui.ask("load", result=shaped["id"], want=10**9, resume=False)["loaded"] == 1111
 
 
 def test_sort_and_filter_of_a_finished_result_use_its_cache(ui: Ui) -> None:
@@ -369,15 +367,10 @@ def test_summary_covers_every_row(ui: Ui) -> None:
     assert {value for value, _ in keys["top"]} == {None, "k0", "k1", "k2"}
 
 
-def test_temporary_table_is_counted_and_summarised_as_far_as_it_is_loaded(ui: Ui) -> None:
-    """Counts and summaries run on another connection, which does not see the notebook's temporary tables."""
+def test_temporary_table_is_summarised_as_far_as_it_is_loaded(ui: Ui) -> None:
+    """Summaries run on another connection, which does not see the notebook's temporary tables."""
     result = ui.run("CREATE TEMP TABLE notes AS SELECT i FROM range(100000) t(i); SELECT * FROM notes")
     assert not result["complete"]
-
-    count = ui.post("count", result=result["id"])
-    assert count.json() == {
-        "error": 'Catalog Error: Table with name notes does not exist!\nDid you mean "pg_namespace"?'
-    }
 
     summary = ui.ask("summarize", result=result["id"], column=0)
     assert (summary["all_rows"], summary["rows"]) == (False, result["loaded"])

@@ -247,7 +247,6 @@ fn api(shared: &Shared, request: &mut tiny_http::Request) -> Reply {
             json(&engine.value(result, row, column, limit.min(MAX_VALUE_CHARS))?)
         }
         Request::Reshape { result, view } => json(&engine.reshape(result, view)?),
-        Request::Count { result } => json(&engine.count(result)?),
         Request::Summarize { result, column } => json(&engine.summarize(result, column)?),
         Request::Export { result, format } => json(&export(shared, result, format)?),
         Request::Forget { result } => json(&engine.forget(result)),

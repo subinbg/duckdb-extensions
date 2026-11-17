@@ -239,14 +239,15 @@ impl Engine {
 
         // The statement's text is needed to run it again as a subquery.
         // It is known when this lexer and DuckDB's parser agree on where the statements end,
-        // and usable when DuckDB accepts the subquery.
+        // and usable when DuckDB parses the subquery. It is not bound: binding reads the source,
+        // as a CSV file's first rows, or runs it, as bigquery_query runs its query.
         let texts = sql::split_statements(text);
         let subquery = (texts.len() == statements.len()).then(|| {
             let names: Vec<_> = (0..last.column_count()).map(|index| format!("c{index}")).collect();
             format!("SELECT * FROM ({}\n) AS _q({})", texts[last_index], names.join(", "))
         });
         let source = subquery
-            .filter(|subquery| session.conn.prepare(subquery).is_ok())
+            .filter(|subquery| session.conn.statements(subquery).is_ok_and(|parsed| parsed.len() == 1))
             .map(|subquery| Source { ordered: subquery.clone(), unordered: subquery });
 
         let mut rows = last.stream()?;

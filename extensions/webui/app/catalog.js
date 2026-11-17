@@ -124,7 +124,9 @@ function drawRelation(database, { schema, name, is_view: isView, estimated_rows:
     h("button", { className: "open", title: "Open in a new cell", onclick: preview }, "▶"),
   );
 
-  const column = ({ name, data_type: dataType }) =>
-    h("div", { className: "node level-3 column", title: dataType }, span("label", name), span("dim", dataType));
+  const column = ({ name, data_type: dataType }) => {
+    const title = `${name} ${dataType}`;
+    return h("div", { className: "node level-3 column", title }, span("label", name), span("dim", dataType));
+  };
   return [node, open && columns.map(column)];
 }

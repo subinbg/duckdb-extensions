@@ -270,9 +270,17 @@ code {
   padding-left: 84px;
 }
 
+/* The name takes the line beside what follows it, such as a column's type, which is cut beyond 55% of the line. */
 .node .label {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node > .dim {
+  flex: none;
+  max-width: 55%;
   overflow: hidden;
   text-overflow: ellipsis;
 }

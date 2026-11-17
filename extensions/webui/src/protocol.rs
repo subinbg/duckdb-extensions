@@ -34,8 +34,6 @@ pub enum Request {
     Value { result: u64, row: u64, column: usize, limit: u64 },
     /// The result's rows sorted and filtered by DuckDB, as another result: [`ResultInfo`].
     Reshape { result: u64, view: View },
-    /// The number of rows, counted at the source of an unfinished result: `u64`.
-    Count { result: u64 },
     /// What DuckDB's `SUMMARIZE` says about one column: [`Summary`].
     Summarize { result: u64, column: usize },
     /// Write every row to a file the browser then downloads: the link, a `String` that works once.
@@ -123,7 +121,7 @@ pub struct ResultInfo {
     /// Whether the statement is still open, so that more rows come without running it again.
     pub streaming: bool,
     /// Whether DuckDB can run the statement as a subquery: to load rows after it was closed,
-    /// and to sort, filter, count and summarise an unfinished result.
+    /// and to sort, filter and summarise an unfinished result.
     pub repeatable: bool,
     /// The sort and filters this result was built with.
     pub view: View,

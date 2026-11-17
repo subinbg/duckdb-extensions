@@ -120,11 +120,11 @@ It replaces DuckDB's `ui` extension, which is left out of the bundle: that exten
 | Browser application | Downloaded on every page load, about 10 MB | Included in the extension, 80 KB; the page loads nothing from another host |
 | Rows of a result | The first 50,000 | All of them: the grid loads rows as it scrolls, and the result is cached in DuckDB, which moves it to disk when memory runs short |
 | Sort and filter | In SQL only | From the column headers, computed by DuckDB over every row |
-| Row count and column summary | Computed after every run, on the notebook's connection | Count in the background on another connection, the `SUMMARIZE` of a column on request; neither delays the next cell |
+| Row count and column summary | Computed after every run, on the notebook's connection | Rows are counted once all are loaded: counting an unfinished result would read its whole source. The `SUMMARIZE` of a column on request, on another connection, so it does not delay the next cell |
 | A long text value | The first 10,000 characters, unless switched to raw view | Whole |
 | A nested value | Tree; a `UNION` shows as empty | Tree for structs, lists, maps, unions and JSON |
 | Export | The first 50,000 rows | Every row, as CSV, Parquet or JSON |
-| Reading a source | Written by hand | **+ Add a source** asks for the fields of a template and adds a cell with its SQL: DuckDB, SQLite and PostgreSQL databases, BigQuery tables, queries and catalogs, and Parquet, CSV, JSON, Avro and Iceberg files |
+| Reading a source | Written by hand | **+ Add a source** asks for the fields of a template and adds a cell with its SQL: it attaches a DuckDB, SQLite or PostgreSQL database, or creates a view of Parquet, CSV, JSON, Avro or Iceberg files or of a BigQuery table or query, which reads no rows until it is queried |
 | Access control | None: any local process can run SQL | A random token, part of the URL, required by every request |
 | Databases attached to your session | Three, for its own use | None |
 | Size of the extension | 56 MB | 1.0 MB |
@@ -165,7 +165,7 @@ The engine runs SQL on four connections of its own:
 2. Streamed rows are appended, unconverted, to a temporary table on a second connection. DuckDB gives that table the column types of the result, and names them for the page. Pages are read from it by row number, with every value cast to text by DuckDB.
 3. The session streams one statement at a time. When another cell runs, the open one stops growing. Scrolling it further runs it again as a subquery that skips the rows already cached; a statement that took more than a second is run again only on request.
 4. A sort or filter on an unfinished result is added to the statement and streamed anew; on a finished result it is computed from the cache. Filter values are untyped literals, which DuckDB reads as the type of their column.
-5. Counts, column summaries and exports of an unfinished result run on a third connection, and the catalog is read on a fourth, so none of them waits for a running cell.
+5. Column summaries and exports of an unfinished result run on a third connection, and the catalog is read on a fourth, so none of them waits for a running cell.
 
 ### Limits
 
@@ -173,7 +173,7 @@ The engine runs SQL on four connections of its own:
 |---|---|
 | One server per process | A second database of the same process can load `webui`, but `webui_start()` fails there until the first one stops. |
 | One notebook | Cells are saved to `notebook.json` in the state directory; there is no list of notebooks. |
-| Temporary tables | The row count and column summary of an unfinished result run on another connection, which does not see the notebook's temporary tables. For such a statement the count is not shown, and a summary covers the rows loaded so far. |
+| Temporary tables | The column summary of an unfinished result runs on another connection, which does not see the notebook's temporary tables. For such a statement a summary covers the rows loaded so far. |
 | Running a statement again | Loading more rows of a statement that is no longer open assumes it returns the same rows in the same order. |
 | Charts, MotherDuck | Not included. |
 

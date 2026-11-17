@@ -90,18 +90,6 @@ impl Engine {
         self.hold(&mut session, rows, Some(base.columns.clone()), Some(reshaped), view)
     }
 
-    /// Count every row of a result, at its source when it is unfinished.
-    pub fn count(&self, id: u64) -> Result<u64> {
-        let held = self.held(id)?;
-        let (loaded, complete) = held.progress();
-        if complete {
-            return Ok(loaded);
-        }
-
-        let source = held.source.as_ref().ok_or("this result can be counted once all its rows are loaded")?;
-        count_rows(&self.background(), &format!("({}) AS _c", source.unordered)).map_err(first_paragraph)
-    }
-
     /// Summarise one column: over every row where DuckDB can compute that, otherwise over the rows loaded so far.
     pub fn summarize(&self, id: u64, column: usize) -> Result<Summary> {
         let held = self.held(id)?;
