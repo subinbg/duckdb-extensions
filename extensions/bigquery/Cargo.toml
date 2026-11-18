@@ -21,4 +21,4 @@ google-cloud-auth = "1.19"
 google-cloud-bigquery = "0.20"
 google-cloud-bigquery-v2 = "1.1"
 google-cloud-gax = "1.15"
-tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }

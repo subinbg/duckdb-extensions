@@ -218,6 +218,18 @@ To make Google itself refuse every write, read with an identity that may only re
 
 Without credentials, the first call waits about a minute for the metadata server of a Google Cloud machine before it fails, with the advice to sign in.
 
+### Permissions
+
+Each function needs only these roles of the identity it signs in as:
+
+| Function | Roles |
+|---|---|
+| `bigquery_datasets`, `bigquery_tables` | BigQuery Metadata Viewer, or Data Viewer, on the datasets |
+| `bigquery_scan` | Data Viewer on the table's dataset, and Read Session User on the project that pays for the read |
+| `bigquery_query` | Job User on the project the query runs in, Data Viewer on the datasets it reads, and Read Session User on that project, as its result is read through the Storage Read API |
+
+No call names a quota project, which would also ask for `serviceusage.services.use` on it, unless the Application Default Credentials name one (`gcloud auth application-default set-quota-project`): every call then does.
+
 ### Limits
 
 | Limit | Detail |

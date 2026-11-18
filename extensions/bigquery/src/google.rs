@@ -4,6 +4,7 @@
 
 use std::error::Error;
 use std::sync::{Arc, LazyLock, OnceLock};
+use std::time::Duration;
 
 use arrow::array::{StringArray, TimestampMillisecondArray};
 use arrow::buffer::Buffer;
@@ -11,17 +12,20 @@ use arrow::datatypes::SchemaRef;
 use arrow::ipc::reader::{StreamDecoder, StreamReader};
 use arrow::record_batch::RecordBatch;
 use google_cloud_auth::credentials::Builder as Credentials;
-use google_cloud_bigquery::client::{BigQuery, Read};
+use google_cloud_bigquery::client::Read;
 use google_cloud_bigquery::model::arrow_serialization_options::CompressionCodec;
 use google_cloud_bigquery::model::read_session::TableReadOptions;
 use google_cloud_bigquery::model::{ArrowSerializationOptions, DataFormat, ReadSession};
 use google_cloud_bigquery::read::Reader;
-use google_cloud_bigquery_v2::client::{DatasetService, TableService};
-use google_cloud_bigquery_v2::model::query_request::JobCreationMode;
+use google_cloud_bigquery_v2::client::{DatasetService, JobService, TableService};
+use google_cloud_bigquery_v2::model::{Job, JobConfiguration, JobConfigurationQuery};
 use google_cloud_gax::paginator::ItemPaginator;
 use tokio::runtime::Runtime;
 
 pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+/// The longest wait between two looks at a running query job.
+const MAX_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| Runtime::new().expect("a Tokio runtime"));
 
@@ -33,7 +37,7 @@ pub fn wait<F: Future>(future: F) -> F::Output {
 struct Clients {
     datasets: DatasetService,
     tables: TableService,
-    bigquery: BigQuery,
+    jobs: JobService,
     read: Read,
 }
 
@@ -51,7 +55,7 @@ fn clients() -> Result<&'static Clients> {
         Ok::<_, Box<dyn Error>>(Clients {
             datasets: DatasetService::builder().with_credentials(credentials.clone()).build().await?,
             tables: TableService::builder().with_credentials(credentials.clone()).build().await?,
-            bigquery: BigQuery::builder().with_credentials(credentials.clone()).build().await?,
+            jobs: JobService::builder().with_credentials(credentials.clone()).build().await?,
             read: Read::builder().with_credentials(credentials).build().await?,
         })
     })?;
@@ -120,25 +124,40 @@ pub fn tables(path: &str) -> Result<RecordBatch> {
 /// Run a GoogleSQL query in `project`, which pays for it, and return the table BigQuery wrote its result to.
 ///
 /// A dry run first tells what the statement is, and only a SELECT is run: the extension reads, whatever the
-/// account may do.
+/// account may do. The jobs name their project in the request only. As a quota project, it would also ask the
+/// caller for `serviceusage.services.use` on it, which BigQuery does not need.
 pub fn query(project: &str, sql: &str) -> Result<Table> {
-    let bigquery = &clients()?.bigquery;
+    let jobs = &clients()?.jobs;
+    let job = |dry_run: bool| {
+        let query = JobConfigurationQuery::new().set_query(sql).set_use_legacy_sql(false);
+        Job::new().set_configuration(JobConfiguration::new().set_query(query).set_dry_run(dry_run))
+    };
+
     let job = wait(async {
-        let dry_run = bigquery.query(sql).with_project_id(project).set_dry_run(true).send().await?;
-        let statement = &dry_run.metadata().statement_type;
+        let dry_run = jobs.insert_job().set_project_id(project).set_job(job(true)).send().await?;
+        let statement = dry_run.statistics.and_then(|statistics| statistics.query).unwrap_or_default().statement_type;
         if statement != "SELECT" {
             return Err(format!("bigquery_query runs only SELECT statements, and this is {statement}").into());
         }
 
-        let done = bigquery
-            .query(sql)
-            .with_project_id(project)
-            .set_job_creation_mode(JobCreationMode::JobCreationRequired)
-            .until_done()
-            .await?;
-        Ok::<_, Box<dyn Error>>(done.get_job().ok_or("BigQuery ran the query without a job")?.send().await?)
+        let mut job = jobs.insert_job().set_project_id(project).set_job(job(false)).send().await?;
+        let mut pause = Duration::from_millis(100);
+        while job.status.as_ref().is_some_and(|status| status.state != "DONE") {
+            tokio::time::sleep(pause).await;
+            pause = (pause * 2).min(MAX_POLL_INTERVAL);
+            let reference = job.job_reference.unwrap_or_default();
+            let mut get = jobs.get_job().set_project_id(reference.project_id).set_job_id(reference.job_id);
+            if let Some(location) = reference.location {
+                get = get.set_location(location);
+            }
+            job = get.send().await?;
+        }
+        Ok::<_, Box<dyn Error>>(job)
     })?;
 
+    if let Some(error) = job.status.and_then(|status| status.error_result) {
+        return Err(error.message.into());
+    }
     let result = job.configuration.and_then(|configuration| configuration.query?.destination_table);
     let result = result.ok_or("BigQuery wrote the result to no table")?;
     Ok(Table { project: result.project_id, dataset: result.dataset_id, table: result.table_id })
